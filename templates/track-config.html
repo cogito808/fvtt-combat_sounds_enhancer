@@ -1,0 +1,14 @@
+<form>
+  {{#each actors as |actor|}}
+    <div class="form-group">
+      <label>{{actor.name}}</label>
+      <select name="{{actor.id}}">
+        <option value="">None</option>
+        {{#each ../sounds as |sound|}}
+          <option value="{{sound}}" {{#ifEquals ../trackMap.[actor.id] sound}}selected{{/ifEquals}}>{{sound}}</option>
+        {{/each}}
+      </select>
+    </div>
+  {{/each}}
+  <button type="submit">Save</button>
+</form>
