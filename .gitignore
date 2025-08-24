@@ -1,0 +1,17 @@
+# Node modules (if using npm for tooling)
+node_modules/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Foundry-generated cache and temp files
+*.log
+*.tmp
+*.bak
+
+# Build artifacts or zips
+*.zip
+
+# Personal config or environment files
+.env
