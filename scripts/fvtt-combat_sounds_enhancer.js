@@ -35,7 +35,9 @@ class HypeTrackConfigForm extends FormApplication {
   }
 
   getData() {
-    const actors = game.actors.filter(a => a.type === "character");
+    ///for live(playerowned only) 
+	const actors = game.actors.filter(a => a.hasPlayerOwner);
+    ///for testing(all characters)    const actors = game.actors.filter(a => a.type === "character");
     const playlists = game.playlists.contents.filter(p => p.name === "Hype Tracks");
     const sounds = playlists.flatMap(p => p.sounds.map(s => s.name));
     const trackMap = game.settings.get("fvtt-combat_sounds_enhancer", "actorTrackMap");
