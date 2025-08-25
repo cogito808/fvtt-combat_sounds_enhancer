@@ -97,6 +97,5 @@ Hooks.on("updateCombat", async (combat, updateData) => {
   if (!sound) return;
 
   await combatStartLock;
-  console.log(`🎵 Combat start sound finished. Now playing hype track for ${combat.combatant?.actor?.name}`);
   await playlist.playSound(sound);
 });
