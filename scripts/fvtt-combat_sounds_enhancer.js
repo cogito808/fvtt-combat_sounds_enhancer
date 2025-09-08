@@ -6,7 +6,7 @@ Hooks.once("ready", () => {
 });
 
 Hooks.once("init", () => {
-  game.settings.registerMenu("FVTT-Hype_Tracks", "trackConfig", {
+  game.settings.registerMenu("fvtt-combat_sounds_enhancer", "trackConfig", {
     name: "Hype Track Assignment",
     label: "Configure Actor Tracks",
     hint: "Assign a playlist track to each player character.",
@@ -15,7 +15,7 @@ Hooks.once("init", () => {
     restricted: true
   });
 
-  game.settings.register("FVTT-Hype_Tracks", "actorTrackMap", {
+  game.settings.register("fvtt-combat_sounds_enhancer", "actorTrackMap", {
     name: "Actor Track Map",
     scope: "world",
     config: false,
@@ -29,16 +29,18 @@ class HypeTrackConfigForm extends FormApplication {
     return mergeObject(super.defaultOptions, {
       title: "Hype Track Assignment",
       id: "hype-track-config",
-      template: "modules/FVTT-Hype_Tracks/templates/track-config.html",
+      template: "modules/fvtt-combat_sounds_enhancer/templates/track-config.html",
       width: 400
     });
   }
 
   getData() {
-    const actors = game.actors.filter(a => a.type === "character");
+    ///for live(playerowned only) 
+	const actors = game.actors.filter(a => a.hasPlayerOwner);
+    ///for testing(all characters)    const actors = game.actors.filter(a => a.type === "character");
     const playlists = game.playlists.contents.filter(p => p.name === "Hype Tracks");
     const sounds = playlists.flatMap(p => p.sounds.map(s => s.name));
-    const trackMap = game.settings.get("FVTT-Hype_Tracks", "actorTrackMap");
+    const trackMap = game.settings.get("fvtt-combat_sounds_enhancer", "actorTrackMap");
 
     return { actors, sounds, trackMap };
   }
@@ -48,7 +50,7 @@ class HypeTrackConfigForm extends FormApplication {
     for (const [key, value] of Object.entries(formData)) {
       if (value) newMap[key] = value;
     }
-    await game.settings.set("FVTT-Hype_Tracks", "actorTrackMap", newMap);
+    await game.settings.set("fvtt-combat_sounds_enhancer", "actorTrackMap", newMap);
   }
 }
 
@@ -83,7 +85,7 @@ Hooks.on("updateCombat", async (combat, updateData) => {
   if (!("turn" in updateData)) return;
 
   const actorId = combat.combatant?.actor?.id;
-  const trackMap = game.settings.get("FVTT-Hype_Tracks", "actorTrackMap");
+  const trackMap = game.settings.get("fvtt-combat_sounds_enhancer", "actorTrackMap");
   const soundName = trackMap[actorId];
   if (!soundName) return;
 
@@ -92,22 +94,5 @@ Hooks.on("updateCombat", async (combat, updateData) => {
   if (!sound) return;
 
   await combatStartLock;
-  await playlist.playSound(sound);
-});
-
-Hooks.on("updateCombatant", async (combatant, updateData) => {
-  if (!game.user.isGM) return;
-  if (!updateData.defeated) return;
-
-  const actor = combatant.actor;
-  if (!actor || actor.type === "character") return;
-
-  const playlist = game.playlists.getName("Death Sounds");
-  if (!playlist || playlist.sounds.length === 0) return;
-
-  const validSounds = playlist.sounds.filter(s => s.path);
-  const sound = validSounds[Math.floor(Math.random() * validSounds.length)];
-  if (!sound) return;
-
   await playlist.playSound(sound);
 });
