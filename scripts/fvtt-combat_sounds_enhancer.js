@@ -1,3 +1,5 @@
+// scripts/fvtt-combat_sounds_enhancer.js
+
 let isMonkCombatDetailsActive = false;
 let combatStartLock = Promise.resolve();
 
@@ -145,8 +147,8 @@ Hooks.on("createChatMessage", async (message) => {
   console.log("Unadjusted Outcome:", unadjustedOutcome);
 
   let playlistName = null;
-  if (outcome === "criticalSuccess") playlistName = "Critical Hits";
-  else if (outcome === "criticalFailure") playlistName = "Critical Miss";
+  if (outcome === "criticalSuccess") playlistName = "Critical Success";
+  else if (outcome === "criticalFailure") playlistName = "Critical Failure";
   else return;
 
   const playlist = game.playlists.getName(playlistName);
