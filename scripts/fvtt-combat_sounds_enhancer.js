@@ -111,3 +111,57 @@ Hooks.on("updateCombatant", async (combatant, updateData) => {
 
   await playlist.playSound(sound);
 });
+
+Hooks.on("preCreateChatMessage", async (message, options, userId) => {
+  if (!game.user.isGM) return;
+  const flags = message.flags?.pf2e?.context;
+  console.log("PF2E Flags:", flags);
+  if (!flags) return;
+
+  let playlistName = null;
+  if (flags.isCriticalSuccess) playlistName = "Critical Hits";
+  else if (flags.isCriticalFailure) playlistName = "Critical Miss";
+  else return;
+
+  const playlist = game.playlists.getName(playlistName);
+  if (!playlist || playlist.sounds.length === 0) return;
+
+  const validSounds = playlist.sounds.filter(s => s.path);
+  const sound = validSounds[Math.floor(Math.random() * validSounds.length)];
+  if (!sound) return;
+
+  console.log(`Playing sound: ${sound.name}`);
+  await playlist.playSound(sound);
+});
+
+Hooks.on("createChatMessage", async (message) => {
+  if (!game.user.isGM) return;
+
+  const context = message.flags?.pf2e?.context;
+  const outcome = context?.outcome;
+  const unadjustedOutcome = context?.unadjustedOutcome;
+
+  console.log("Outcome:", outcome);
+  console.log("Unadjusted Outcome:", unadjustedOutcome);
+
+  let playlistName = null;
+  if (outcome === "criticalSuccess") playlistName = "Critical Hits";
+  else if (outcome === "criticalFailure") playlistName = "Critical Miss";
+  else return;
+
+  const playlist = game.playlists.getName(playlistName);
+  if (!playlist || playlist.sounds.length === 0) {
+    console.warn(`Playlist '${playlistName}' not found or empty.`);
+    return;
+  }
+
+  const validSounds = playlist.sounds.filter(s => s.path);
+  const sound = validSounds[Math.floor(Math.random() * validSounds.length)];
+  if (!sound) {
+    console.warn(`No valid sound found in '${playlistName}'`);
+    return;
+  }
+
+  console.log(`🎯 Playing '${outcome}' sound: ${sound.name}`);
+  await playlist.playSound(sound);
+});
