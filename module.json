@@ -1,8 +1,10 @@
 {
-    "id": "fvtt-combat_sounds_enhancer",
-    "title": "Combat Sounds Enhancer",
-    "description": "Add sounds to various elements of combat.",
-    "version": "1.0.0",
+	"id": "fvtt-combat_sounds_enhancer",
+	"title": "Combat Sounds Enhancer",
+	"description": "Adds sound effects for combat events.",
+	"version": "1.1.0",
+	"type": "module",
+	"template": "templates/soundboard.html",
     "esmodules": [
         "scripts/fvtt-combat_sounds_enhancer.js"
     ],

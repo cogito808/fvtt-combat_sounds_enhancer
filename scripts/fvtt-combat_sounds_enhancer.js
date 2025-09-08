@@ -31,7 +31,7 @@ class HypeTrackConfigForm extends FormApplication {
     return mergeObject(super.defaultOptions, {
       title: "Hype Track Assignment",
       id: "hype-track-config",
-      template: "modules/FVTT-Hype_Tracks/templates/track-config.html",
+      template: "modules/fvtt-combat_sounds_enhancer/templates/track-config.html",
       width: 400
     });
   }
