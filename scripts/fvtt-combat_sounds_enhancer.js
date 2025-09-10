@@ -1,3 +1,5 @@
+// scripts/fvtt-combat_sounds_enhancer.js
+
 let isMonkCombatDetailsActive = false;
 let combatStartLock = Promise.resolve();
 
@@ -6,13 +8,48 @@ Hooks.once("ready", () => {
 });
 
 Hooks.once("init", () => {
-  game.settings.registerMenu("fvtt-combat_sounds_enhancer", "trackConfig", {
-    name: "Hype Track Assignment",
-    label: "Configure Actor Tracks",
-    hint: "Assign a playlist track to each player character.",
-    icon: "fas fa-music",
-    type: HypeTrackConfigForm,
-    restricted: true
+  loadTemplates([
+    "modules/fvtt-combat_sounds_enhancer/templates/track-config.html"
+  ]);
+
+  game.settings.register("fvtt-combat_sounds_enhancer", "enableHypeTracks", {
+    name: "Enable Hype Tracks",
+    hint: "Play hype track for each actor on their turn.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+    order: 1
+  });
+
+  game.settings.register("fvtt-combat_sounds_enhancer", "enableCombatStarts", {
+    name: "Enable Combat Starts",
+    hint: "Play sound when combat starts.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+    order: 2
+  });
+
+  game.settings.register("fvtt-combat_sounds_enhancer", "enableDeathSounds", {
+    name: "Enable Death Sounds",
+    hint: "Play sound when non-character actor is defeated.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+    order: 3
+  });
+
+  game.settings.register("fvtt-combat_sounds_enhancer", "enableCriticalSounds", {
+    name: "Enable Critical Sounds",
+    hint: "Play sound on critical success or failure.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+    order: 4
   });
 
   game.settings.register("fvtt-combat_sounds_enhancer", "actorTrackMap", {
@@ -21,6 +58,17 @@ Hooks.once("init", () => {
     config: false,
     type: Object,
     default: {}
+  });
+
+  // Register the menu last so it appears at the bottom of the settings UI
+  game.settings.registerMenu("fvtt-combat_sounds_enhancer", "trackConfig", {
+    name: "🎵 Configure Actor Tracks (Hype Tracks)",
+    label: "Hype Track Assignment",
+    hint: "Assign tracks to actors. Only used if Hype Tracks are enabled.",
+    icon: "fas fa-music",
+    type: HypeTrackConfigForm,
+    restricted: true,
+    order: 99
   });
 });
 
@@ -35,20 +83,19 @@ class HypeTrackConfigForm extends FormApplication {
   }
 
   getData() {
-    ///for live(playerowned only) 
-	const actors = game.actors.filter(a => a.hasPlayerOwner);
-    ///for testing(all characters)    const actors = game.actors.filter(a => a.type === "character");
+    const actors = game.actors.filter(a => a.type === "character");
     const playlists = game.playlists.contents.filter(p => p.name === "Hype Tracks");
     const sounds = playlists.flatMap(p => p.sounds.map(s => s.name));
     const trackMap = game.settings.get("fvtt-combat_sounds_enhancer", "actorTrackMap");
-
     return { actors, sounds, trackMap };
   }
 
   async _updateObject(event, formData) {
     const newMap = {};
     for (const [key, value] of Object.entries(formData)) {
-      if (value) newMap[key] = value;
+      if (value) {
+        newMap[key] = value;
+      }
     }
     await game.settings.set("fvtt-combat_sounds_enhancer", "actorTrackMap", newMap);
   }
@@ -60,6 +107,7 @@ Handlebars.registerHelper("ifEquals", function(a, b, options) {
 
 Hooks.on("combatStart", (combat, options, userId) => {
   if (!game.user.isGM) return;
+  if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCombatStarts")) return;
 
   const delay = isMonkCombatDetailsActive ? 500 : 0;
 
@@ -82,6 +130,7 @@ Hooks.on("combatStart", (combat, options, userId) => {
 });
 
 Hooks.on("updateCombat", async (combat, updateData) => {
+  if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableHypeTracks")) return;
   if (!("turn" in updateData)) return;
 
   const actorId = combat.combatant?.actor?.id;
@@ -94,5 +143,79 @@ Hooks.on("updateCombat", async (combat, updateData) => {
   if (!sound) return;
 
   await combatStartLock;
+  await playlist.playSound(sound);
+});
+
+Hooks.on("updateCombatant", async (combatant, updateData) => {
+  if (!game.user.isGM) return;
+  if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableDeathSounds")) return;
+  if (!updateData.defeated) return;
+
+  const actor = combatant.actor;
+  if (!actor || actor.type === "character") return;
+
+  const playlist = game.playlists.getName("Death Sounds");
+  if (!playlist || playlist.sounds.length === 0) return;
+
+  const validSounds = playlist.sounds.filter(s => s.path);
+  const sound = validSounds[Math.floor(Math.random() * validSounds.length)];
+  if (!sound) return;
+
+  await playlist.playSound(sound);
+});
+
+Hooks.on("preCreateChatMessage", async (message, options, userId) => {
+  if (!game.user.isGM) return;
+  if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCriticalSounds")) return;
+  const flags = message.flags?.pf2e?.context;
+  console.log("PF2E Flags:", flags);
+  if (!flags) return;
+
+  let playlistName = null;
+  if (flags.isCriticalSuccess) playlistName = "Critical Hits";
+  else if (flags.isCriticalFailure) playlistName = "Critical Miss";
+  else return;
+
+  const playlist = game.playlists.getName(playlistName);
+  if (!playlist || playlist.sounds.length === 0) return;
+
+  const validSounds = playlist.sounds.filter(s => s.path);
+  const sound = validSounds[Math.floor(Math.random() * validSounds.length)];
+  if (!sound) return;
+
+  console.log(`Playing sound: ${sound.name}`);
+  await playlist.playSound(sound);
+});
+
+Hooks.on("createChatMessage", async (message) => {
+  if (!game.user.isGM) return;
+  if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCriticalSounds")) return;
+
+  const context = message.flags?.pf2e?.context;
+  const outcome = context?.outcome;
+  const unadjustedOutcome = context?.unadjustedOutcome;
+
+  console.log("Outcome:", outcome);
+  console.log("Unadjusted Outcome:", unadjustedOutcome);
+
+  let playlistName = null;
+  if (outcome === "criticalSuccess") playlistName = "Critical Success";
+  else if (outcome === "criticalFailure") playlistName = "Critical Failure";
+  else return;
+
+  const playlist = game.playlists.getName(playlistName);
+  if (!playlist || playlist.sounds.length === 0) {
+    console.warn(`Playlist '${playlistName}' not found or empty.`);
+    return;
+  }
+
+  const validSounds = playlist.sounds.filter(s => s.path);
+  const sound = validSounds[Math.floor(Math.random() * validSounds.length)];
+  if (!sound) {
+    console.warn(`No valid sound found in '${playlistName}'`);
+    return;
+  }
+
+  console.log(`🎯 Playing '${outcome}' sound: ${sound.name}`);
   await playlist.playSound(sound);
 });
