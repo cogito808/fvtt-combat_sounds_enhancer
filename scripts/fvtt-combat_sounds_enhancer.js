@@ -12,7 +12,7 @@ Hooks.once("init", () => {
     "modules/fvtt-combat_sounds_enhancer/templates/track-config.html"
   ]);
 
-  game.settings.register("FVTT-Hype_Tracks", "enableHypeTracks", {
+  game.settings.register("fvtt-combat_sounds_enhancer", "enableHypeTracks", {
     name: "Enable Hype Tracks",
     hint: "Play hype track for each actor on their turn.",
     scope: "world",
@@ -22,7 +22,7 @@ Hooks.once("init", () => {
     order: 1
   });
 
-  game.settings.register("FVTT-Hype_Tracks", "enableCombatStarts", {
+  game.settings.register("fvtt-combat_sounds_enhancer", "enableCombatStarts", {
     name: "Enable Combat Starts",
     hint: "Play sound when combat starts.",
     scope: "world",
@@ -32,7 +32,7 @@ Hooks.once("init", () => {
     order: 2
   });
 
-  game.settings.register("FVTT-Hype_Tracks", "enableDeathSounds", {
+  game.settings.register("fvtt-combat_sounds_enhancer", "enableDeathSounds", {
     name: "Enable Death Sounds",
     hint: "Play sound when non-character actor is defeated.",
     scope: "world",
@@ -42,7 +42,7 @@ Hooks.once("init", () => {
     order: 3
   });
 
-  game.settings.register("FVTT-Hype_Tracks", "enableCriticalSounds", {
+  game.settings.register("fvtt-combat_sounds_enhancer", "enableCriticalSounds", {
     name: "Enable Critical Sounds",
     hint: "Play sound on critical success or failure.",
     scope: "world",
@@ -52,7 +52,7 @@ Hooks.once("init", () => {
     order: 4
   });
 
-  game.settings.register("FVTT-Hype_Tracks", "actorTrackMap", {
+  game.settings.register("fvtt-combat_sounds_enhancer", "actorTrackMap", {
     name: "Actor Track Map",
     scope: "world",
     config: false,
@@ -61,7 +61,7 @@ Hooks.once("init", () => {
   });
 
   // Register the menu last so it appears at the bottom of the settings UI
-  game.settings.registerMenu("FVTT-Hype_Tracks", "trackConfig", {
+  game.settings.registerMenu("fvtt-combat_sounds_enhancer", "trackConfig", {
     name: "🎵 Configure Actor Tracks (Hype Tracks)",
     label: "Hype Track Assignment",
     hint: "Assign tracks to actors. Only used if Hype Tracks are enabled.",
@@ -86,7 +86,7 @@ class HypeTrackConfigForm extends FormApplication {
     const actors = game.actors.filter(a => a.type === "character");
     const playlists = game.playlists.contents.filter(p => p.name === "Hype Tracks");
     const sounds = playlists.flatMap(p => p.sounds.map(s => s.name));
-    const trackMap = game.settings.get("FVTT-Hype_Tracks", "actorTrackMap");
+    const trackMap = game.settings.get("fvtt-combat_sounds_enhancer", "actorTrackMap");
     return { actors, sounds, trackMap };
   }
 
@@ -97,7 +97,7 @@ class HypeTrackConfigForm extends FormApplication {
         newMap[key] = value;
       }
     }
-    await game.settings.set("FVTT-Hype_Tracks", "actorTrackMap", newMap);
+    await game.settings.set("fvtt-combat_sounds_enhancer", "actorTrackMap", newMap);
   }
 }
 
@@ -107,7 +107,7 @@ Handlebars.registerHelper("ifEquals", function(a, b, options) {
 
 Hooks.on("combatStart", (combat, options, userId) => {
   if (!game.user.isGM) return;
-  if (!game.settings.get("FVTT-Hype_Tracks", "enableCombatStarts")) return;
+  if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCombatStarts")) return;
 
   const delay = isMonkCombatDetailsActive ? 500 : 0;
 
@@ -130,11 +130,11 @@ Hooks.on("combatStart", (combat, options, userId) => {
 });
 
 Hooks.on("updateCombat", async (combat, updateData) => {
-  if (!game.settings.get("FVTT-Hype_Tracks", "enableHypeTracks")) return;
+  if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableHypeTracks")) return;
   if (!("turn" in updateData)) return;
 
   const actorId = combat.combatant?.actor?.id;
-  const trackMap = game.settings.get("FVTT-Hype_Tracks", "actorTrackMap");
+  const trackMap = game.settings.get("fvtt-combat_sounds_enhancer", "actorTrackMap");
   const soundName = trackMap[actorId];
   if (!soundName) return;
 
@@ -148,7 +148,7 @@ Hooks.on("updateCombat", async (combat, updateData) => {
 
 Hooks.on("updateCombatant", async (combatant, updateData) => {
   if (!game.user.isGM) return;
-  if (!game.settings.get("FVTT-Hype_Tracks", "enableDeathSounds")) return;
+  if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableDeathSounds")) return;
   if (!updateData.defeated) return;
 
   const actor = combatant.actor;
@@ -166,7 +166,7 @@ Hooks.on("updateCombatant", async (combatant, updateData) => {
 
 Hooks.on("preCreateChatMessage", async (message, options, userId) => {
   if (!game.user.isGM) return;
-  if (!game.settings.get("FVTT-Hype_Tracks", "enableCriticalSounds")) return;
+  if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCriticalSounds")) return;
   const flags = message.flags?.pf2e?.context;
   console.log("PF2E Flags:", flags);
   if (!flags) return;
@@ -189,7 +189,7 @@ Hooks.on("preCreateChatMessage", async (message, options, userId) => {
 
 Hooks.on("createChatMessage", async (message) => {
   if (!game.user.isGM) return;
-  if (!game.settings.get("FVTT-Hype_Tracks", "enableCriticalSounds")) return;
+  if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCriticalSounds")) return;
 
   const context = message.flags?.pf2e?.context;
   const outcome = context?.outcome;

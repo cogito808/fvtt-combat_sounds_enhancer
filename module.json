@@ -8,13 +8,9 @@
   "esmodules": [
     "scripts/fvtt-combat_sounds_enhancer.js"
   ],
-  "templatePaths": [
-    "modules/fvtt-combat_sounds_enhancer/templates"
-  ],
-  "compatibility": {
-    "minimum": "13.344",
-    "verified": "13.347",
-    "maximum": "13"
+   "compatibility": {
+       "minimum": "13",
+       "verified": "13"
   },
   "manifest": "https://your-host.com/module.json",
   "download": "https://your-host.com/combat-sound.zip"
