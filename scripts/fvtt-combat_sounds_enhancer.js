@@ -105,6 +105,61 @@ Handlebars.registerHelper("ifEquals", function(a, b, options) {
   return a === b ? options.fn(this) : options.inverse(this);
 });
 
+/**
+ * Helper: detect whether a PF2e chat message context represents an attack roll.
+ *
+ * Rationale: PF2e sends multiple chat messages (attack roll, damage roll, etc.) that
+ * share the same `flags.pf2e.context` structure. Without a more specific guard the
+ * module can trigger critical sounds on damage messages. This helper tries a few
+ * defensive checks found commonly in PF2e message contexts to approximate an attack.
+ *
+ * Assumptions (conservative):
+ * - context.type === 'attack-roll' indicates an attack roll; OR
+ * - context.actionType === 'attack' indicates an attack; OR
+ * - context.item?.type === 'weapon' is likely an attack-related message.
+ * If none of these fields exist we default to false to avoid false positives.
+ */
+function isPf2eAttackContext(context) {
+  if (!context || typeof context !== 'object') return false;
+  // Explicit attack markers
+  if (context.type === 'attack-roll') return true;
+  if (context.actionType === 'attack') return true;
+  // Some PF2e messages include a 'roll' object with a type
+  if (context.roll && context.roll.type === 'attack') return true;
+  // `attackRoll` boolean or similar flags
+  if (context.attackRoll === true) return true;
+  // Items of type 'weapon' are likely attack messages (but could be used elsewhere)
+  try {
+    if (context.item && context.item.type === 'weapon') return true;
+  } catch (e) {
+    // defensive: fall through
+  }
+
+  // Heuristic: if the context explicitly seems to be a damage roll, reject
+  if (context.roll && context.roll.type === 'damage') return false;
+  if (String(context.type).toLowerCase().includes('damage')) return false;
+
+  // Fallback permissive checks: originType sometimes contains 'Item' or 'Weapon'
+  if (typeof context.originType === 'string' && /item|weapon/i.test(context.originType)) return true;
+
+  // Last resort: don't assume it's an attack to avoid false positives
+  return false;
+}
+
+function isPf2eAttackMessage(message) {
+  const context = message?.flags?.pf2e?.context;
+  return isPf2eAttackContext(context);
+}
+
+function isPf2eDamageContext(context) {
+  if (!context || typeof context !== 'object') return false;
+  // Common indicators of damage rolls
+  if (context.roll && context.roll.type === 'damage') return true;
+  if (Array.isArray(context.roll?.types) && context.roll.types.includes('damage')) return true;
+  if (String(context.type).toLowerCase().includes('damage')) return true;
+  return false;
+}
+
 Hooks.on("combatStart", (combat, options, userId) => {
   if (!game.user.isGM) return;
   if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCombatStarts")) return;
@@ -171,11 +226,14 @@ Hooks.on("preCreateChatMessage", async (message, options, userId) => {
   console.log("PF2E Flags:", flags);
   if (!flags) return;
 
-  let playlistName = null;
-  if (flags.isCriticalSuccess) playlistName = "Critical Hits";
-  else if (flags.isCriticalFailure) playlistName = "Critical Miss";
-  else return;
+  // If this message explicitly marks a critical, play the critical sound
+  // (allow skill checks and non-attack criticals). Exclude damage rolls.
+  const isCriticalSuccess = !!flags.isCriticalSuccess;
+  const isCriticalFailure = !!flags.isCriticalFailure;
+  if (!isCriticalSuccess && !isCriticalFailure) return;
+  if (isPf2eDamageContext(flags)) return;
 
+  const playlistName = isCriticalSuccess ? "Critical Hits" : "Critical Miss";
   const playlist = game.playlists.getName(playlistName);
   if (!playlist || playlist.sounds.length === 0) return;
 
@@ -190,7 +248,6 @@ Hooks.on("preCreateChatMessage", async (message, options, userId) => {
 Hooks.on("createChatMessage", async (message) => {
   if (!game.user.isGM) return;
   if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCriticalSounds")) return;
-
   const context = message.flags?.pf2e?.context;
   const outcome = context?.outcome;
   const unadjustedOutcome = context?.unadjustedOutcome;
@@ -198,9 +255,16 @@ Hooks.on("createChatMessage", async (message) => {
   console.log("Outcome:", outcome);
   console.log("Unadjusted Outcome:", unadjustedOutcome);
 
+  // Play on critical outcomes (accept skill checks and non-attack messages).
+  // Skip explicit damage rolls to avoid duplicate sounds on damage messages.
+  const criticalOutcome = outcome || unadjustedOutcome;
+  if (!criticalOutcome) return;
+  if (!["criticalSuccess", "criticalFailure"].includes(criticalOutcome)) return;
+  if (isPf2eDamageContext(context)) return;
+
   let playlistName = null;
-  if (outcome === "criticalSuccess") playlistName = "Critical Success";
-  else if (outcome === "criticalFailure") playlistName = "Critical Failure";
+  if (criticalOutcome === "criticalSuccess") playlistName = "Critical Success";
+  else if (criticalOutcome === "criticalFailure") playlistName = "Critical Failure";
   else return;
 
   const playlist = game.playlists.getName(playlistName);
@@ -216,6 +280,6 @@ Hooks.on("createChatMessage", async (message) => {
     return;
   }
 
-  console.log(`🎯 Playing '${outcome}' sound: ${sound.name}`);
+  console.log(`🎯 Playing '${criticalOutcome}' sound: ${sound.name}`);
   await playlist.playSound(sound);
 });
