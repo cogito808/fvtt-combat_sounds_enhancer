@@ -9,8 +9,8 @@
     "scripts/fvtt-combat_sounds_enhancer.js"
   ],
    "compatibility": {
-       "minimum": "13",
-       "verified": "13"
+     "minimum": "13",
+     "verified": "13"
   },
   "manifest": "https://your-host.com/module.json",
   "download": "https://your-host.com/combat-sound.zip"

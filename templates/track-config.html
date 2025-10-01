@@ -7,9 +7,10 @@
         <select name="{{actor.id}}">
           <option value="">None</option>
           {{#each ../sounds as |sound|}}
-            <option value="{{sound}}" {{#ifEquals ../trackMap.[actor.id] sound}}selected{{/ifEquals}}>{{sound}}</option>
+            <option value="{{sound.path}}" {{#ifEquals (lookup ../selectedPaths actor.id) sound.path}}selected{{/ifEquals}}>{{sound.name}}</option>
           {{/each}}
         </select>
+        
       </div>
     {{/each}}
   </fieldset>

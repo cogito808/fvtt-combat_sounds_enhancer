@@ -1,0 +1,17 @@
+<form>
+  <fieldset>
+    <legend>Playlist Name Mapping</legend>
+    {{#each keys as |k|}}
+      <div class="form-group">
+        <label for="{{k}}">{{lookup ../labels k}}</label>
+        <select name="{{k}}" id="{{k}}">
+          <option value="">Use default ({{lookup ../defaults k}})</option>
+          {{#each ../playlists as |p|}}
+            <option value="{{p}}" {{#ifEquals p (lookup ../current k)}}selected{{/ifEquals}}>{{p}}</option>
+          {{/each}}
+        </select>
+      </div>
+    {{/each}}
+  </fieldset>
+  <button type="submit">Save</button>
+</form>
