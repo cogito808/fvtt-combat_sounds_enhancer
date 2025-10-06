@@ -12,6 +12,7 @@
      "minimum": "13",
      "verified": "13"
   },
-  "manifest": "https://your-host.com/module.json",
-  "download": "https://your-host.com/combat-sound.zip"
+  "url": "https://github.com/cogito808/fvtt-combat_sounds_enhancer",
+  "manifest": "https://raw.githubusercontent.com/cogito808/fvtt-combat_sounds_enhancer/main/module.json",
+  "download": "https://github.com/cogito808/fvtt-combat_sounds_enhancer/archive/refs/heads/main.zip"
 }
