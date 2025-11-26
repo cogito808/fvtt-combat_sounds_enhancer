@@ -1,10 +1,9 @@
 {
   "id": "fvtt-combat_sounds_enhancer",
-  "name": "fvtt-combat_sounds_enhancer",
   "title": "Combat Sounds Enhancer",
   "description": "Adds sound effects for combat events.",
   "version": "1.1.0",
-  "type": "module",
+  "author": "cogito808",
   "esmodules": [
     "scripts/fvtt-combat_sounds_enhancer.js"
   ],
