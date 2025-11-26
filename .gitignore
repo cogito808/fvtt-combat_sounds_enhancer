@@ -15,3 +15,4 @@ Thumbs.db
 
 # Personal config or environment files
 .env
+.github/copilot-instructions.md
