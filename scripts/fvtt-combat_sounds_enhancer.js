@@ -63,9 +63,26 @@ Hooks.once("init", async () => {
   // to the global `loadTemplates` for V13 compatibility.
   const loadTemplatesFn = foundry?.applications?.handlebars?.loadTemplates ?? loadTemplates;
   await loadTemplatesFn([
-    "modules/fvtt-combat_sounds_enhancer/templates/track-config.html",
     "modules/fvtt-combat_sounds_enhancer/templates/playlist-name-config.html"
   ]);
+
+  // Register custom data field for hype track on token prototypes
+  if (foundry?.data?.fields) {
+    const fields = foundry.data.fields;
+    CONFIG.Actor.dataModels = CONFIG.Actor.dataModels || {};
+    const DataModel = foundry.abstract.DataModel;
+    
+    // Extend Actor schema to add hypeTrack field
+    Hooks.on("modelDataFieldRegister", (fields) => {
+      if (CONFIG.Actor.dataFields) {
+        CONFIG.Actor.dataFields.prototype.hypeTrack = new fields.StringField({ 
+          initial: "",
+          label: "Hype Track",
+          hint: "Path to hype track sound for this actor"
+        });
+      }
+    });
+  }
 
   game.settings.register("fvtt-combat_sounds_enhancer", "enableHypeTracks", {
     name: "Enable Hype Tracks",
@@ -107,14 +124,6 @@ Hooks.once("init", async () => {
     order: 4
   });
 
-  game.settings.register("fvtt-combat_sounds_enhancer", "actorTrackMap", {
-    name: "Actor Track Map",
-    scope: "world",
-    config: false,
-    type: Object,
-    default: {}
-  });
-
   // Allow an optional mapping from logical keys to playlist names so maintainers
   // or users can override playlist names without changing code.
   game.settings.register("fvtt-combat_sounds_enhancer", "playlistNameMap", {
@@ -132,17 +141,6 @@ Hooks.once("init", async () => {
     config: false,
     type: Boolean,
     default: false
-  });
-
-  // Register the menu last so it appears at the bottom of the settings UI
-  game.settings.registerMenu("fvtt-combat_sounds_enhancer", "trackConfig", {
-    name: "🎵 Configure Actor Tracks (Hype Tracks)",
-    label: "Hype Track Assignment",
-    hint: "Assign tracks to actors. Only used if Hype Tracks are enabled.",
-    icon: "fas fa-music",
-    type: HypeTrackConfigForm,
-    restricted: true,
-    order: 99
   });
 
   // Register a small config form to edit playlist name overrides
@@ -175,108 +173,6 @@ Hooks.once("init", async () => {
     console.warn("fvtt-combat_sounds_enhancer: playlistNameMap migration check failed:", e);
   }
 });
-
-class HypeTrackConfigForm extends FormAppBase {
-  static get defaultOptions() {
-  return foundry.utils.mergeObject(super.defaultOptions, {
-      title: "Hype Track Assignment",
-      id: "hype-track-config",
-      template: "modules/fvtt-combat_sounds_enhancer/templates/track-config.html",
-      width: 400
-    });
-  }
-
-  getData() {
-    const actors = game.actors.filter(a => a.type === "character");
-    const playlist = getPlaylistByKey('hypeTracks');
-    // Build sounds as objects (name + path) for robust identification
-    const sounds = (playlist?.sounds || []).map(s => ({ name: s.name, path: s.path }));
-    const trackMap = game.settings.get("fvtt-combat_sounds_enhancer", "actorTrackMap") || {};
-    // Normalize existing stored values (which may be names from older versions) -> prefer paths
-    const normalized = {};
-    for (const actor of actors) {
-      const key = actor.id;
-      const stored = trackMap?.[key];
-      if (!stored) continue;
-      // If stored already looks like a path and matches a sound.path, keep it
-      if (sounds.find(s => s.path === stored)) {
-        normalized[key] = stored;
-        continue;
-      }
-      // Otherwise, try to find by name and convert to path
-      const found = sounds.find(s => s.name === stored);
-      if (found) normalized[key] = found.path;
-    }
-    // Build a selected-paths map where we match by exact path first, otherwise try filename fallback
-    const selectedPaths = {};
-    const soundFileName = p => (p || "").split("/").pop()?.toLowerCase();
-    for (const actor of actors) {
-      const key = actor.id;
-      const stored = normalized[key];
-      if (!stored) continue;
-      // exact match
-      const exact = sounds.find(s => s.path === stored);
-      if (exact) {
-        selectedPaths[key] = exact.path;
-        continue;
-      }
-      // filename fallback
-      const want = soundFileName(stored);
-      const byName = sounds.find(s => soundFileName(s.path) === want);
-      if (byName) selectedPaths[key] = byName.path;
-    }
-
-    return { actors, sounds, trackMap, normalizedTrackMap: normalized, selectedPaths };
-  }
-
-  async _updateObject(event, formData) {
-    // Merge with existing actorTrackMap so omissions don't clear previous selections.
-    const existing = game.settings.get("fvtt-combat_sounds_enhancer", "actorTrackMap") || {};
-    const merged = foundry.utils.mergeObject({}, existing);
-    
-    // Convert selected values (which are sound.path) and store paths for robustness
-    const playlist = getPlaylistByKey('hypeTracks');
-    const soundByPath = new Map((playlist?.sounds || []).map(s => [s.path, s]));
-    for (const [key, value] of Object.entries(formData)) {
-      if (value && String(value).trim().length > 0) {
-        const v = String(value).trim();
-        // If this path exists in the current playlist, store the path
-        if (soundByPath.has(v)) merged[key] = v;
-        else merged[key] = v; // store whatever the user selected (fallback)
-      } else delete merged[key];
-    }
-  await game.settings.set("fvtt-combat_sounds_enhancer", "actorTrackMap", merged);
-  }
-
-  activateListeners(html) {
-    super.activateListeners(html);
-    try {
-      const actors = game.actors.filter(a => a.type === "character");
-      const playlist = getPlaylistByKey('hypeTracks');
-      const sounds = (playlist?.sounds || []).map(s => ({ name: s.name, path: s.path }));
-      const trackMap = game.settings.get("fvtt-combat_sounds_enhancer", "actorTrackMap") || {};
-      const normalized = {};
-      for (const actor of actors) {
-        const key = actor.id;
-        const stored = trackMap?.[key];
-        if (!stored) continue;
-        if (sounds.find(s => s.path === stored)) { normalized[key] = stored; continue; }
-        const found = sounds.find(s => s.name === stored);
-        if (found) normalized[key] = found.path;
-      }
-      
-      for (const actor of actors) {
-        const sel = html.find(`select[name="${actor.id}"]`);
-        if (sel && sel.length) {
-          const v = normalized[actor.id] || "";
-          sel.val(v);
-        }
-      }
-    } catch (e) {
-      console.warn("HypeTrackConfigForm.activateListeners error", e);
-    }
-  }
-}
 
 class PlaylistNameMapForm extends FormAppBase {
   static get defaultOptions() {
@@ -313,6 +209,58 @@ class PlaylistNameMapForm extends FormAppBase {
 
 Handlebars.registerHelper("ifEquals", function(a, b, options) {
   return a === b ? options.fn(this) : options.inverse(this);
+});
+
+/**
+ * Hook to extend token prototype configuration with hype track selector.
+ * This adds the hype track field to the ActorSheet when editing a token.
+ */
+Hooks.on("renderActorSheet", (app, html, data) => {
+  try {
+    // Only add the hype track field for character actors on the prototype sheet
+    if (app.actor?.type !== "character") return;
+    
+    const playlist = getPlaylistByKey('hypeTracks');
+    if (!playlist || !playlist.sounds || playlist.sounds.length === 0) return;
+
+    // Check if this is a prototype token configuration (by looking for relevant UI elements)
+    const sounds = playlist.sounds.map(s => ({ name: s.name, path: s.path }));
+    const currentHypeTrack = app.actor.prototypeToken?.getFlag?.("fvtt-combat_sounds_enhancer", "hypeTrack") || "";
+
+    // Create the form group HTML
+    let html_content = `
+      <div class="form-group">
+        <label for="hype-track-selector">Hype Track (Combat Sounds Enhancer)</label>
+        <select id="hype-track-selector" name="hype-track">
+          <option value="">None</option>
+    `;
+    
+    for (const sound of sounds) {
+      const selected = currentHypeTrack === sound.path ? 'selected' : '';
+      html_content += `<option value="${sound.path}" ${selected}>${sound.name}</option>`;
+    }
+    
+    html_content += `</select></div>`;
+
+    // Find a good place to insert it in the sheet (typically after a token section)
+    // This is a generic approach that works with most sheet layouts
+    const form = html.find('form');
+    if (form.length) {
+      form.append(html_content);
+      
+      // Add change event listener
+      html.find("#hype-track-selector").on("change", async (event) => {
+        const selectedPath = event.target.value;
+        if (selectedPath) {
+          await app.actor.prototypeToken.setFlag("fvtt-combat_sounds_enhancer", "hypeTrack", selectedPath);
+        } else {
+          await app.actor.prototypeToken.unsetFlag("fvtt-combat_sounds_enhancer", "hypeTrack");
+        }
+      });
+    }
+  } catch (e) {
+    console.warn("Error adding hype track selector to actor sheet:", e);
+  }
 });
 
 /**
@@ -395,14 +343,16 @@ Hooks.on("updateCombat", async (combat, updateData) => {
   if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableHypeTracks")) return;
   if (!("turn" in updateData)) return;
 
-  const actorId = combat.combatant?.actor?.id;
-  const trackMap = game.settings.get("fvtt-combat_sounds_enhancer", "actorTrackMap");
-  const stored = trackMap[actorId];
-  if (!stored) return;
+  const actor = combat.combatant?.actor;
+  if (!actor) return;
+
+  // Get the hype track from the actor's prototype token
+  const hypeTrackPath = actor.prototypeToken?.getFlag?.("fvtt-combat_sounds_enhancer", "hypeTrack") || "";
+  if (!hypeTrackPath) return;
 
   const playlist = getPlaylistByKey('hypeTracks');
-  // First try to resolve by sound.path (new format), fall back to name (legacy)
-  const sound = playlist?.sounds.find(s => s.path === stored) || playlist?.sounds.find(s => s.name === stored);
+  // Resolve by sound.path
+  const sound = playlist?.sounds.find(s => s.path === hypeTrackPath);
   if (!sound) return;
 
   await combatStartLock;
