@@ -213,15 +213,27 @@ Handlebars.registerHelper("ifEquals", function(a, b, options) {
 
 /**
  * Hook to extend token prototype configuration with hype track selector.
- * This adds the hype track field to the top of the Actions tab in character sheets.
+ * This adds the hype track field to the biography/notes tab for all actor types (characters, NPCs, etc.).
+ * Supports both V1 and V2 form applications.
  */
-Hooks.on("renderActorSheet", (app, html, data) => {
+function addHypeTrackSelector(html, app) {
   try {
-    // Only add the hype track field for character actors
-    if (app.actor?.type !== "character") return;
+    console.log("fvtt-combat_sounds_enhancer: Adding hype track selector for", app.actor.type);
+    
+    // Ensure html is a jQuery object (V1 passes jQuery, V2 passes DOM elements)
+    if (!(html instanceof jQuery)) {
+      html = $(html);
+    }
+    
+    // Add for any actor type except certain system-specific types to exclude
+    const excludeTypes = ["hazard"]; // Exclude hazards and similar non-character types
+    if (excludeTypes.includes(app.actor?.type)) return;
     
     const playlist = getPlaylistByKey('hypeTracks');
-    if (!playlist || !playlist.sounds || playlist.sounds.length === 0) return;
+    if (!playlist || !playlist.sounds || playlist.sounds.length === 0) {
+      console.warn("fvtt-combat_sounds_enhancer: No hype tracks playlist found");
+      return;
+    }
 
     const sounds = playlist.sounds.map(s => ({ name: s.name, path: s.path }));
     const currentHypeTrack = app.actor.prototypeToken?.getFlag?.("fvtt-combat_sounds_enhancer", "hypeTrack") || "";
@@ -242,11 +254,47 @@ Hooks.on("renderActorSheet", (app, html, data) => {
     
     html_content += `</select></div></section>`;
 
-    // Target the biography tab content area
-    const bioContent = html.find('.tab.biography');
-    if (bioContent.length) {
-      // Insert at the beginning of the biography tab content
-      bioContent.first().prepend(html_content);
+    // Try multiple selector patterns for different systems
+    let targetTab = html.find('.tab.biography');
+    console.log("fvtt-combat_sounds_enhancer: Trying .tab.biography", targetTab.length);
+    
+    if (!targetTab.length) targetTab = html.find('.tab.notes');
+    console.log("fvtt-combat_sounds_enhancer: Trying .tab.notes", targetTab.length);
+    
+    if (!targetTab.length) targetTab = html.find('.tab[data-tab="biography"]');
+    console.log("fvtt-combat_sounds_enhancer: Trying .tab[data-tab='biography']", targetTab.length);
+    
+    if (!targetTab.length) targetTab = html.find('.tab[data-tab="notes"]');
+    console.log("fvtt-combat_sounds_enhancer: Trying .tab[data-tab='notes']", targetTab.length);
+    
+    if (!targetTab.length) targetTab = html.find('[data-tab="biography"]');
+    console.log("fvtt-combat_sounds_enhancer: Trying [data-tab='biography']", targetTab.length);
+    
+    if (!targetTab.length) targetTab = html.find('[data-tab="notes"]');
+    console.log("fvtt-combat_sounds_enhancer: Trying [data-tab='notes']", targetTab.length);
+    
+    // Log all tabs found for debugging
+    const allTabs = html.find('.tab');
+    console.log("fvtt-combat_sounds_enhancer: All tabs found:", allTabs.length);
+    allTabs.each((i, tab) => {
+      console.log("fvtt-combat_sounds_enhancer: Tab", i, "classes:", tab.className, "data-tab:", tab.getAttribute('data-tab'));
+    });
+    
+    // Fallback: if still not found, insert after first tab
+    if (!targetTab.length) {
+      const firstTab = html.find('.sheet-body .tab:first');
+      console.log("fvtt-combat_sounds_enhancer: Trying .sheet-body .tab:first", firstTab.length);
+      if (firstTab.length) {
+        targetTab = firstTab;
+      }
+    }
+
+    if (targetTab && targetTab.length) {
+      // Insert at the beginning of the target tab
+      console.log("fvtt-combat_sounds_enhancer: Inserting hype track selector");
+      targetTab.first().prepend(html_content);
+    } else {
+      console.warn("fvtt-combat_sounds_enhancer: Could not find a suitable tab for actor sheet", app.actor.type);
     }
       
     // Add change event listener
@@ -261,6 +309,17 @@ Hooks.on("renderActorSheet", (app, html, data) => {
   } catch (e) {
     console.warn("Error adding hype track selector to actor sheet:", e);
   }
+}
+
+// Support for V1 sheets (PF2e and older systems)
+Hooks.on("renderActorSheet", (app, html, data) => {
+  addHypeTrackSelector(html, app);
+});
+
+// Support for V2 sheets (D&D 5e and newer systems)
+Hooks.on("renderActorSheetV2", (app, html, data) => {
+  console.log("fvtt-combat_sounds_enhancer: renderActorSheetV2 hook fired");
+  addHypeTrackSelector(html, app);
 });
 
 /**
