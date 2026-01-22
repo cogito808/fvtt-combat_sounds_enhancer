@@ -213,26 +213,26 @@ Handlebars.registerHelper("ifEquals", function(a, b, options) {
 
 /**
  * Hook to extend token prototype configuration with hype track selector.
- * This adds the hype track field to the ActorSheet when editing a token.
+ * This adds the hype track field to the top of the Actions tab in character sheets.
  */
 Hooks.on("renderActorSheet", (app, html, data) => {
   try {
-    // Only add the hype track field for character actors on the prototype sheet
+    // Only add the hype track field for character actors
     if (app.actor?.type !== "character") return;
     
     const playlist = getPlaylistByKey('hypeTracks');
     if (!playlist || !playlist.sounds || playlist.sounds.length === 0) return;
 
-    // Check if this is a prototype token configuration (by looking for relevant UI elements)
     const sounds = playlist.sounds.map(s => ({ name: s.name, path: s.path }));
     const currentHypeTrack = app.actor.prototypeToken?.getFlag?.("fvtt-combat_sounds_enhancer", "hypeTrack") || "";
 
-    // Create the form group HTML
+    // Create the form group HTML with a section header
     let html_content = `
-      <div class="form-group">
-        <label for="hype-track-selector">Hype Track (Combat Sounds Enhancer)</label>
-        <select id="hype-track-selector" name="hype-track">
-          <option value="">None</option>
+      <section class="hype-track-section">
+        <h3 class="form-header">Hype Track</h3>
+        <div class="form-group">
+          <select id="hype-track-selector" name="hype-track">
+            <option value="">None</option>
     `;
     
     for (const sound of sounds) {
@@ -240,24 +240,24 @@ Hooks.on("renderActorSheet", (app, html, data) => {
       html_content += `<option value="${sound.path}" ${selected}>${sound.name}</option>`;
     }
     
-    html_content += `</select></div>`;
+    html_content += `</select></div></section>`;
 
-    // Find a good place to insert it in the sheet (typically after a token section)
-    // This is a generic approach that works with most sheet layouts
-    const form = html.find('form');
-    if (form.length) {
-      form.append(html_content);
-      
-      // Add change event listener
-      html.find("#hype-track-selector").on("change", async (event) => {
-        const selectedPath = event.target.value;
-        if (selectedPath) {
-          await app.actor.prototypeToken.setFlag("fvtt-combat_sounds_enhancer", "hypeTrack", selectedPath);
-        } else {
-          await app.actor.prototypeToken.unsetFlag("fvtt-combat_sounds_enhancer", "hypeTrack");
-        }
-      });
+    // Target the biography tab content area
+    const bioContent = html.find('.tab.biography');
+    if (bioContent.length) {
+      // Insert at the beginning of the biography tab content
+      bioContent.first().prepend(html_content);
     }
+      
+    // Add change event listener
+    html.find("#hype-track-selector").on("change", async (event) => {
+      const selectedPath = event.target.value;
+      if (selectedPath) {
+        await app.actor.prototypeToken.setFlag("fvtt-combat_sounds_enhancer", "hypeTrack", selectedPath);
+      } else {
+        await app.actor.prototypeToken.unsetFlag("fvtt-combat_sounds_enhancer", "hypeTrack");
+      }
+    });
   } catch (e) {
     console.warn("Error adding hype track selector to actor sheet:", e);
   }
