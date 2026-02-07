@@ -10,7 +10,8 @@ const DEFAULT_PLAYLIST_NAMES = {
   hypeTracks: "Hype Tracks",
   deathSounds: "Death Sounds",
   criticalSuccess: "Critical Success",
-  criticalFailure: "Critical Failure"
+  criticalFailure: "Critical Failure",
+  heroPoints: "Hero Points"
 };
 
 // Human-friendly labels for the form UI (first word capitalized, space-separated)
@@ -19,7 +20,8 @@ const PLAYLIST_LABELS = {
   hypeTracks: "Hype Tracks",
   deathSounds: "Death Sounds",
   criticalSuccess: "Critical Success",
-  criticalFailure: "Critical Failure"
+  criticalFailure: "Critical Failure",
+  heroPoints: "Hero Points"
 };
 
 /**
@@ -124,6 +126,16 @@ Hooks.once("init", async () => {
     order: 4
   });
 
+  game.settings.register("fvtt-combat_sounds_enhancer", "enableHeroPointSounds", {
+    name: "Enable Hero Point Sounds",
+    hint: "Play sound when a hero point is used.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+    order: 5
+  });
+
   // Allow an optional mapping from logical keys to playlist names so maintainers
   // or users can override playlist names without changing code.
   game.settings.register("fvtt-combat_sounds_enhancer", "playlistNameMap", {
@@ -186,10 +198,10 @@ class PlaylistNameMapForm extends FormAppBase {
 
   getData() {
     const map = game.settings.get("fvtt-combat_sounds_enhancer", "playlistNameMap") || {};
-    const keys = Object.keys(DEFAULT_PLAYLIST_NAMES);
+    const keys = Object.keys(DEFAULT_PLAYLIST_NAMES).sort();
     const labels = PLAYLIST_LABELS;
-    // Available playlist names in the world
-    const playlists = game.playlists?.contents?.map(p => p.name) || [];
+    // Available playlist names in the world, sorted alphabetically
+    const playlists = (game.playlists?.contents?.map(p => p.name) || []).sort();
     // Merged current mapping (defaults overridden by saved map) used for selection
     const current = foundry.utils.mergeObject(foundry.utils.mergeObject({}, DEFAULT_PLAYLIST_NAMES), map);
     return { map, defaults: DEFAULT_PLAYLIST_NAMES, keys, labels, playlists, current };
@@ -218,8 +230,6 @@ Handlebars.registerHelper("ifEquals", function(a, b, options) {
  */
 function addHypeTrackSelector(html, app) {
   try {
-    console.log("fvtt-combat_sounds_enhancer: Adding hype track selector for", app.actor.type);
-    
     // Ensure html is a jQuery object (V1 passes jQuery, V2 passes DOM elements)
     if (!(html instanceof jQuery)) {
       html = $(html);
@@ -254,47 +264,27 @@ function addHypeTrackSelector(html, app) {
     
     html_content += `</select></div></section>`;
 
-    // Try multiple selector patterns for different systems
-    let targetTab = html.find('.tab.biography');
-    console.log("fvtt-combat_sounds_enhancer: Trying .tab.biography", targetTab.length);
+    // For PF2e, find the biography tab content div specifically
+    let targetTab = html.find('.sheet-body [data-tab="biography"]');
     
-    if (!targetTab.length) targetTab = html.find('.tab.notes');
-    console.log("fvtt-combat_sounds_enhancer: Trying .tab.notes", targetTab.length);
-    
-    if (!targetTab.length) targetTab = html.find('.tab[data-tab="biography"]');
-    console.log("fvtt-combat_sounds_enhancer: Trying .tab[data-tab='biography']", targetTab.length);
-    
-    if (!targetTab.length) targetTab = html.find('.tab[data-tab="notes"]');
-    console.log("fvtt-combat_sounds_enhancer: Trying .tab[data-tab='notes']", targetTab.length);
-    
-    if (!targetTab.length) targetTab = html.find('[data-tab="biography"]');
-    console.log("fvtt-combat_sounds_enhancer: Trying [data-tab='biography']", targetTab.length);
-    
-    if (!targetTab.length) targetTab = html.find('[data-tab="notes"]');
-    console.log("fvtt-combat_sounds_enhancer: Trying [data-tab='notes']", targetTab.length);
-    
-    // Log all tabs found for debugging
-    const allTabs = html.find('.tab');
-    console.log("fvtt-combat_sounds_enhancer: All tabs found:", allTabs.length);
-    allTabs.each((i, tab) => {
-      console.log("fvtt-combat_sounds_enhancer: Tab", i, "classes:", tab.className, "data-tab:", tab.getAttribute('data-tab'));
-    });
-    
-    // Fallback: if still not found, insert after first tab
+    // Fallback for other systems: try notes tab
     if (!targetTab.length) {
-      const firstTab = html.find('.sheet-body .tab:first');
-      console.log("fvtt-combat_sounds_enhancer: Trying .sheet-body .tab:first", firstTab.length);
-      if (firstTab.length) {
-        targetTab = firstTab;
-      }
+      targetTab = html.find('.sheet-body [data-tab="notes"]');
+    }
+    
+    // Last resort: try to find biography/notes tab without sheet-body prefix
+    if (!targetTab.length) {
+      targetTab = html.find('[data-tab="biography"]');
+    }
+    if (!targetTab.length) {
+      targetTab = html.find('[data-tab="notes"]');
     }
 
     if (targetTab && targetTab.length) {
-      // Insert at the beginning of the target tab
-      console.log("fvtt-combat_sounds_enhancer: Inserting hype track selector");
+      // Insert at the beginning of the target tab content
       targetTab.first().prepend(html_content);
     } else {
-      console.warn("fvtt-combat_sounds_enhancer: Could not find a suitable tab for actor sheet", app.actor.type);
+      console.warn("fvtt-combat_sounds_enhancer: Could not find biography/notes tab for actor sheet", app.actor.type);
     }
       
     // Add change event listener
@@ -318,7 +308,6 @@ Hooks.on("renderActorSheet", (app, html, data) => {
 
 // Support for V2 sheets (D&D 5e and newer systems)
 Hooks.on("renderActorSheetV2", (app, html, data) => {
-  console.log("fvtt-combat_sounds_enhancer: renderActorSheetV2 hook fired");
   addHypeTrackSelector(html, app);
 });
 
@@ -482,4 +471,31 @@ Hooks.on("createChatMessage", async (message) => {
   }
 
   await p.playSound(s);
+});
+
+// Track previous hero points state for hero point usage detection
+const previousHeroPointCounts = new WeakMap();
+
+Hooks.on("updateActor", async (actor, updateData, options, userId) => {
+  if (!game.user.isGM) return;
+  if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableHeroPointSounds")) return;
+
+  // Hero points are in actor.system.resources.heroPoints as {value: X, max: Y}
+  const heroPointData = actor.system?.resources?.heroPoints;
+  const currentHeroPoints = heroPointData?.value ?? 0;
+  const previousHeroPoints = previousHeroPointCounts.get(actor) ?? currentHeroPoints;
+
+  // Check if hero points were used (decreased)
+  if (currentHeroPoints < previousHeroPoints) {
+    const playlist = getPlaylistByKey('heroPoints');
+    const sound = getRandomValidSoundFromPlaylist(playlist);
+    if (sound && playlist) {
+      await playlist.playSound(sound);
+    } else {
+      console.warn("fvtt-combat_sounds_enhancer: No valid sound found for hero points");
+    }
+  }
+
+  // Update the tracked hero point count for this actor
+  previousHeroPointCounts.set(actor, currentHeroPoints);
 });

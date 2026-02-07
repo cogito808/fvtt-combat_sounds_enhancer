@@ -10,6 +10,7 @@ Quick setup
 - Create a "Hype Tracks" playlist for player-assigned characters; these tracks play at the start of each turn.
 - Create a "Death Sounds" playlist for NPC defeat events.
 - Create a "Critical Success" and "Critical Failure" playlists for matching critical outcomes in PF2E.
+- Create a "Hero Points" playlist to play a sound when a hero point is used (PF2E).
 
 Testing the Playlist Name Mapping UI (GM only)
 1. In Foundry, open Settings -> Manage Modules -> fvtt-combat_sounds_enhancer and click the small gear/menu entry labelled "Edit playlist name mapping" (GM only).
