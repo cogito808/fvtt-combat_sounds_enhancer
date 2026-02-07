@@ -7,6 +7,7 @@ let combatStartLock = Promise.resolve();
 // so playlist names can be changed centrally or via a setting in the future.
 const DEFAULT_PLAYLIST_NAMES = {
   combatStart: "Combat Starts",
+  combatEnd: "Combat End",
   hypeTracks: "Hype Tracks",
   deathSounds: "Death Sounds",
   criticalSuccess: "Critical Success",
@@ -17,6 +18,7 @@ const DEFAULT_PLAYLIST_NAMES = {
 // Human-friendly labels for the form UI (first word capitalized, space-separated)
 const PLAYLIST_LABELS = {
   combatStart: "Combat Start",
+  combatEnd: "Combat End",
   hypeTracks: "Hype Tracks",
   deathSounds: "Death Sounds",
   criticalSuccess: "Critical Success",
@@ -134,6 +136,26 @@ Hooks.once("init", async () => {
     type: Boolean,
     default: true,
     order: 5
+  });
+
+  game.settings.register("fvtt-combat_sounds_enhancer", "enableCombatEndDialog", {
+    name: "Enable Combat End Dialog",
+    hint: "Show a dialog with a message when combat ends.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+    order: 6
+  });
+
+  game.settings.register("fvtt-combat_sounds_enhancer", "combatEndDialogText", {
+    name: "Combat End Message",
+    hint: "The text to display in the dialog when combat ends.",
+    scope: "world",
+    config: true,
+    type: String,
+    default: "Combat has ended!",
+    order: 7
   });
 
   // Allow an optional mapping from logical keys to playlist names so maintainers
@@ -498,4 +520,31 @@ Hooks.on("updateActor", async (actor, updateData, options, userId) => {
 
   // Update the tracked hero point count for this actor
   previousHeroPointCounts.set(actor, currentHeroPoints);
+});
+Hooks.on("deleteCombat", async (combat, options, userId) => {
+  if (!game.user.isGM) return;
+  if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCombatEndDialog")) return;
+
+  const dialogText = game.settings.get("fvtt-combat_sounds_enhancer", "combatEndDialogText");
+  
+  // Play the combat end sound
+  const playlist = getPlaylistByKey('combatEnd');
+  const sound = getRandomValidSoundFromPlaylist(playlist);
+  if (sound && playlist) {
+    await playlist.playSound(sound);
+  }
+
+  // Show the dialog
+  new Dialog({
+    title: "Combat Ended",
+    content: `<p>${dialogText}</p>`,
+    buttons: {
+      close: {
+        icon: '<i class="fas fa-check"></i>',
+        label: "Close",
+        callback: () => {}
+      }
+    },
+    default: "close"
+  }).render(true);
 });
