@@ -390,7 +390,6 @@ function isPf2eDamageContext(context) {
 }
 
 Hooks.on("combatStart", (combat, options, userId) => {
-  if (!game.user.isGM) return;
   if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCombatStarts")) return;
 
   const delay = isMonkCombatDetailsActive ? 500 : 0;
@@ -431,7 +430,6 @@ Hooks.on("updateCombat", async (combat, updateData) => {
 });
 
 Hooks.on("updateCombatant", async (combatant, updateData) => {
-  if (!game.user.isGM) return;
   if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableDeathSounds")) return;
   if (!updateData.defeated) return;
 
@@ -446,7 +444,6 @@ Hooks.on("updateCombatant", async (combatant, updateData) => {
 });
 
 Hooks.on("preCreateChatMessage", async (message, options, userId) => {
-  if (!game.user.isGM) return;
   if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCriticalSounds")) return;
   const flags = message.flags?.pf2e?.context;
   // Minimal logging: only warn on missing flags when debugging
@@ -469,7 +466,6 @@ Hooks.on("preCreateChatMessage", async (message, options, userId) => {
 });
 
 Hooks.on("createChatMessage", async (message) => {
-  if (!game.user.isGM) return;
   if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCriticalSounds")) return;
   const context = message.flags?.pf2e?.context;
   const outcome = context?.outcome;
@@ -500,7 +496,6 @@ Hooks.on("createChatMessage", async (message) => {
 const previousHeroPointCounts = new WeakMap();
 
 Hooks.on("updateActor", async (actor, updateData, options, userId) => {
-  if (!game.user.isGM) return;
   if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableHeroPointSounds")) return;
 
   // Hero points are in actor.system.resources.heroPoints as {value: X, max: Y}
@@ -523,19 +518,20 @@ Hooks.on("updateActor", async (actor, updateData, options, userId) => {
   previousHeroPointCounts.set(actor, currentHeroPoints);
 });
 Hooks.on("deleteCombat", async (combat, options, userId) => {
-  if (!game.user.isGM) return;
   if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCombatEndDialog")) return;
 
   const dialogText = game.settings.get("fvtt-combat_sounds_enhancer", "combatEndDialogText");
   
-  // Play the combat end sound
-  const playlist = getPlaylistByKey('combatEnd');
-  const sound = getRandomValidSoundFromPlaylist(playlist);
-  if (sound && playlist) {
-    await playlist.playSound(sound);
+  // Play the combat end sound (GM only)
+  if (game.user.isGM) {
+    const playlist = getPlaylistByKey('combatEnd');
+    const sound = getRandomValidSoundFromPlaylist(playlist);
+    if (sound && playlist) {
+      await playlist.playSound(sound);
+    }
   }
 
-  // Show the dialog
+  // Show the dialog for all users
   new Dialog({
     title: "Combat Ended",
     content: `<p>${dialogText}</p>`,
