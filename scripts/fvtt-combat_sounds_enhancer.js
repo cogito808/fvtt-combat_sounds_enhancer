@@ -1,4 +1,5 @@
 // scripts/fvtt-combat_sounds_enhancer.js
+// Hey its me
 
 let isMonkCombatDetailsActive = false;
 let combatStartLock = Promise.resolve();

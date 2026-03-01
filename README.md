@@ -2,7 +2,7 @@
 Add sounds to various elements of combat.
 Important: this version targets Foundry V13.
 
-Designed to play playlist sounds on combat events. It's tested with PF2E, but mostly works with D&D.
+Designed to play playlist sounds on combat events. It's tested with PF2E, but maybe mostly works with D&D.
 
 Quick setup
 - Create a "Combat End" playlist for the end-of-combat dialog sound.
