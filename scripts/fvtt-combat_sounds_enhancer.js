@@ -1,4 +1,4 @@
-// scripts/fvtt-combat_sounds_enhancer.js
+// Combat Sounds Enhancer Module
 
 let isMonkCombatDetailsActive = false;
 let combatStartLock = Promise.resolve();
@@ -7,19 +7,23 @@ let combatStartLock = Promise.resolve();
 // so playlist names can be changed centrally or via a setting in the future.
 const DEFAULT_PLAYLIST_NAMES = {
   combatStart: "Combat Starts",
+  combatEnd: "Combat End",
   hypeTracks: "Hype Tracks",
   deathSounds: "Death Sounds",
   criticalSuccess: "Critical Success",
-  criticalFailure: "Critical Failure"
+  criticalFailure: "Critical Failure",
+  heroPoints: "Hero Points"
 };
 
 // Human-friendly labels for the form UI (first word capitalized, space-separated)
 const PLAYLIST_LABELS = {
   combatStart: "Combat Start",
+  combatEnd: "Combat End",
   hypeTracks: "Hype Tracks",
   deathSounds: "Death Sounds",
   criticalSuccess: "Critical Success",
-  criticalFailure: "Critical Failure"
+  criticalFailure: "Critical Failure",
+  heroPoints: "Hero Points"
 };
 
 /**
@@ -27,23 +31,27 @@ const PLAYLIST_LABELS = {
  * Uses `game.settings` override if present; otherwise falls back to defaults.
  */
 function getPlaylistByKey(key) {
-  try {
-    const overrides = game?.settings?.get?.("fvtt-combat_sounds_enhancer", "playlistNameMap") || {};
-    // mergeObject is a Foundry helper already used in this file
+  const overrides = game?.settings?.get?.("fvtt-combat_sounds_enhancer", "playlistNameMap") || {};
   const names = foundry.utils.mergeObject(foundry.utils.mergeObject({}, DEFAULT_PLAYLIST_NAMES), overrides);
-    const name = names[key];
-    if (!name) return null;
-    return game.playlists.getName(name) || null;
-  } catch (e) {
-    console.warn("getPlaylistByKey error:", e);
-    return null;
-  }
+  const name = names[key];
+  if (!name) return null;
+  return game.playlists.getName(name) || null;
 }
 
 function getRandomValidSoundFromPlaylist(playlist) {
-  if (!playlist || !playlist.sounds || playlist.sounds.length === 0) return null;
-  const validSounds = playlist.sounds.filter(s => s.path);
-  if (validSounds.length === 0) return null;
+  if (!playlist) {
+    console.warn("fvtt-combat_sounds_enhancer: Playlist not found");
+    return null;
+  }
+  if (!playlist.sounds || playlist.sounds.length === 0) {
+    console.warn(`fvtt-combat_sounds_enhancer: Playlist "${playlist.name}" has no sounds`);
+    return null;
+  }
+  const validSounds = playlist.sounds.filter(s => s.path && typeof s.path === 'string' && s.path.trim().length > 0);
+  if (validSounds.length === 0) {
+    console.warn(`fvtt-combat_sounds_enhancer: Playlist "${playlist.name}" has sounds but none have valid paths`);
+    return null;
+  }
   return validSounds[Math.floor(Math.random() * validSounds.length)];
 }
 
@@ -55,17 +63,29 @@ const FormAppBase = foundry?.applications?.api?.FormApplicationV2 ?? FormApplica
 Hooks.once("ready", () => {
   isMonkCombatDetailsActive = game.modules.get("monks-combat-details")?.active;
 });
-
-
-
 Hooks.once("init", async () => {
   // Use the namespaced loadTemplates when available (newer Foundry); fall back
   // to the global `loadTemplates` for V13 compatibility.
   const loadTemplatesFn = foundry?.applications?.handlebars?.loadTemplates ?? loadTemplates;
   await loadTemplatesFn([
-    "modules/fvtt-combat_sounds_enhancer/templates/track-config.html",
     "modules/fvtt-combat_sounds_enhancer/templates/playlist-name-config.html"
   ]);
+
+  // Register custom data field for hype track on token prototypes
+  if (foundry?.data?.fields) {
+    const fields = foundry.data.fields;
+    
+    // Extend Actor schema to add hypeTrack field
+    Hooks.on("modelDataFieldRegister", (fields) => {
+      if (CONFIG.Actor.dataFields) {
+        CONFIG.Actor.dataFields.prototype.hypeTrack = new fields.StringField({ 
+          initial: "",
+          label: "Hype Track",
+          hint: "Path to hype track sound for this actor"
+        });
+      }
+    });
+  }
 
   game.settings.register("fvtt-combat_sounds_enhancer", "enableHypeTracks", {
     name: "Enable Hype Tracks",
@@ -107,42 +127,43 @@ Hooks.once("init", async () => {
     order: 4
   });
 
-  game.settings.register("fvtt-combat_sounds_enhancer", "actorTrackMap", {
-    name: "Actor Track Map",
+  game.settings.register("fvtt-combat_sounds_enhancer", "enableHeroPointSounds", {
+    name: "Enable Hero Point Sounds",
+    hint: "Play sound when a hero point is used.",
     scope: "world",
-    config: false,
-    type: Object,
-    default: {}
+    config: true,
+    type: Boolean,
+    default: true,
+    order: 5
   });
 
-  // Allow an optional mapping from logical keys to playlist names so maintainers
-  // or users can override playlist names without changing code.
+  game.settings.register("fvtt-combat_sounds_enhancer", "enableCombatEndDialog", {
+    name: "Enable Combat End Dialog",
+    hint: "Show a dialog with a message when combat ends.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+    order: 6
+  });
+
+  game.settings.register("fvtt-combat_sounds_enhancer", "combatEndDialogText", {
+    name: "Combat End Message",
+    hint: "The text to display in the dialog when combat ends.",
+    scope: "world",
+    config: true,
+    type: String,
+    default: "Combat has ended!",
+    order: 7
+  });
+
+  // Allow overriding playlist names without changing code
   game.settings.register("fvtt-combat_sounds_enhancer", "playlistNameMap", {
     name: "Playlist Name Map",
     scope: "world",
     config: false,
     type: Object,
     default: DEFAULT_PLAYLIST_NAMES
-  });
-
-  // A hidden switch to allow automatic application of detected overrides.
-  game.settings.register("fvtt-combat_sounds_enhancer", "playlistNameMapAutoApply", {
-    name: "Auto-apply playlist name overrides",
-    scope: "world",
-    config: false,
-    type: Boolean,
-    default: false
-  });
-
-  // Register the menu last so it appears at the bottom of the settings UI
-  game.settings.registerMenu("fvtt-combat_sounds_enhancer", "trackConfig", {
-    name: "🎵 Configure Actor Tracks (Hype Tracks)",
-    label: "Hype Track Assignment",
-    hint: "Assign tracks to actors. Only used if Hype Tracks are enabled.",
-    icon: "fas fa-music",
-    type: HypeTrackConfigForm,
-    restricted: true,
-    order: 99
   });
 
   // Register a small config form to edit playlist name overrides
@@ -155,128 +176,7 @@ Hooks.once("init", async () => {
     restricted: true,
     order: 100
   });
-
-  // Migration stub: detect if stored overrides differ from defaults and log.
-  // If the hidden boolean `playlistNameMapAutoApply` is true, write the merged
-  // mapping back to settings (this is opt-in and disabled by default).
-  try {
-    const current = game.settings.get("fvtt-combat_sounds_enhancer", "playlistNameMap") || {};
-    const autoApply = game.settings.get("fvtt-combat_sounds_enhancer", "playlistNameMapAutoApply");
-    // Simple deep-inequality check via JSON stringify (acceptable for small map)
-    const differs = JSON.stringify(current) !== JSON.stringify(DEFAULT_PLAYLIST_NAMES);
-    if (differs) {
-      // Detected playlistNameMap overrides; do not log by default. Set 'playlistNameMapAutoApply' to true to apply automatically.
-      if (autoApply) {
-        const merged = foundry.utils.mergeObject(foundry.utils.mergeObject({}, DEFAULT_PLAYLIST_NAMES), current);
-        game.settings.set("fvtt-combat_sounds_enhancer", "playlistNameMap", merged);
-      }
-    }
-  } catch (e) {
-    console.warn("fvtt-combat_sounds_enhancer: playlistNameMap migration check failed:", e);
-  }
 });
-
-class HypeTrackConfigForm extends FormAppBase {
-  static get defaultOptions() {
-  return foundry.utils.mergeObject(super.defaultOptions, {
-      title: "Hype Track Assignment",
-      id: "hype-track-config",
-      template: "modules/fvtt-combat_sounds_enhancer/templates/track-config.html",
-      width: 400
-    });
-  }
-
-  getData() {
-    const actors = game.actors.filter(a => a.type === "character");
-    const playlist = getPlaylistByKey('hypeTracks');
-    // Build sounds as objects (name + path) for robust identification
-    const sounds = (playlist?.sounds || []).map(s => ({ name: s.name, path: s.path }));
-    const trackMap = game.settings.get("fvtt-combat_sounds_enhancer", "actorTrackMap") || {};
-    // Normalize existing stored values (which may be names from older versions) -> prefer paths
-    const normalized = {};
-    for (const actor of actors) {
-      const key = actor.id;
-      const stored = trackMap?.[key];
-      if (!stored) continue;
-      // If stored already looks like a path and matches a sound.path, keep it
-      if (sounds.find(s => s.path === stored)) {
-        normalized[key] = stored;
-        continue;
-      }
-      // Otherwise, try to find by name and convert to path
-      const found = sounds.find(s => s.name === stored);
-      if (found) normalized[key] = found.path;
-    }
-    // Build a selected-paths map where we match by exact path first, otherwise try filename fallback
-    const selectedPaths = {};
-    const soundFileName = p => (p || "").split("/").pop()?.toLowerCase();
-    for (const actor of actors) {
-      const key = actor.id;
-      const stored = normalized[key];
-      if (!stored) continue;
-      // exact match
-      const exact = sounds.find(s => s.path === stored);
-      if (exact) {
-        selectedPaths[key] = exact.path;
-        continue;
-      }
-      // filename fallback
-      const want = soundFileName(stored);
-      const byName = sounds.find(s => soundFileName(s.path) === want);
-      if (byName) selectedPaths[key] = byName.path;
-    }
-
-    return { actors, sounds, trackMap, normalizedTrackMap: normalized, selectedPaths };
-  }
-
-  async _updateObject(event, formData) {
-    // Merge with existing actorTrackMap so omissions don't clear previous selections.
-    const existing = game.settings.get("fvtt-combat_sounds_enhancer", "actorTrackMap") || {};
-    const merged = foundry.utils.mergeObject({}, existing);
-    
-    // Convert selected values (which are sound.path) and store paths for robustness
-    const playlist = getPlaylistByKey('hypeTracks');
-    const soundByPath = new Map((playlist?.sounds || []).map(s => [s.path, s]));
-    for (const [key, value] of Object.entries(formData)) {
-      if (value && String(value).trim().length > 0) {
-        const v = String(value).trim();
-        // If this path exists in the current playlist, store the path
-        if (soundByPath.has(v)) merged[key] = v;
-        else merged[key] = v; // store whatever the user selected (fallback)
-      } else delete merged[key];
-    }
-  await game.settings.set("fvtt-combat_sounds_enhancer", "actorTrackMap", merged);
-  }
-
-  activateListeners(html) {
-    super.activateListeners(html);
-    try {
-      const actors = game.actors.filter(a => a.type === "character");
-      const playlist = getPlaylistByKey('hypeTracks');
-      const sounds = (playlist?.sounds || []).map(s => ({ name: s.name, path: s.path }));
-      const trackMap = game.settings.get("fvtt-combat_sounds_enhancer", "actorTrackMap") || {};
-      const normalized = {};
-      for (const actor of actors) {
-        const key = actor.id;
-        const stored = trackMap?.[key];
-        if (!stored) continue;
-        if (sounds.find(s => s.path === stored)) { normalized[key] = stored; continue; }
-        const found = sounds.find(s => s.name === stored);
-        if (found) normalized[key] = found.path;
-      }
-      
-      for (const actor of actors) {
-        const sel = html.find(`select[name="${actor.id}"]`);
-        if (sel && sel.length) {
-          const v = normalized[actor.id] || "";
-          sel.val(v);
-        }
-      }
-    } catch (e) {
-      console.warn("HypeTrackConfigForm.activateListeners error", e);
-    }
-  }
-}
 
 class PlaylistNameMapForm extends FormAppBase {
   static get defaultOptions() {
@@ -290,10 +190,10 @@ class PlaylistNameMapForm extends FormAppBase {
 
   getData() {
     const map = game.settings.get("fvtt-combat_sounds_enhancer", "playlistNameMap") || {};
-    const keys = Object.keys(DEFAULT_PLAYLIST_NAMES);
+    const keys = Object.keys(DEFAULT_PLAYLIST_NAMES).sort();
     const labels = PLAYLIST_LABELS;
-    // Available playlist names in the world
-    const playlists = game.playlists?.contents?.map(p => p.name) || [];
+    // Available playlist names in the world, sorted alphabetically
+    const playlists = (game.playlists?.contents?.map(p => p.name) || []).sort();
     // Merged current mapping (defaults overridden by saved map) used for selection
     const current = foundry.utils.mergeObject(foundry.utils.mergeObject({}, DEFAULT_PLAYLIST_NAMES), map);
     return { map, defaults: DEFAULT_PLAYLIST_NAMES, keys, labels, playlists, current };
@@ -316,54 +216,99 @@ Handlebars.registerHelper("ifEquals", function(a, b, options) {
 });
 
 /**
- * Helper: detect whether a PF2e chat message context represents an attack roll.
- *
- * Rationale: PF2e sends multiple chat messages (attack roll, damage roll, etc.) that
- * share the same `flags.pf2e.context` structure. Without a more specific guard the
- * module can trigger critical sounds on damage messages. This helper tries a few
- * defensive checks found commonly in PF2e message contexts to approximate an attack.
- *
- * Assumptions (conservative):
- * - context.type === 'attack-roll' indicates an attack roll; OR
- * - context.actionType === 'attack' indicates an attack; OR
- * - context.item?.type === 'weapon' is likely an attack-related message.
- * If none of these fields exist we default to false to avoid false positives.
+ * Hook to extend actor sheets with a hype track selector.
+ * Adds the hype track field to the biography/notes tab for all actor types.
+ * Supports both V1 and V2 form applications.
  */
-function isPf2eAttackContext(context) {
-  if (!context || typeof context !== 'object') return false;
-  // Explicit attack markers
-  if (context.type === 'attack-roll') return true;
-  if (context.actionType === 'attack') return true;
-  // Some PF2e messages include a 'roll' object with a type
-  if (context.roll && context.roll.type === 'attack') return true;
-  // `attackRoll` boolean or similar flags
-  if (context.attackRoll === true) return true;
-  // Items of type 'weapon' are likely attack messages (but could be used elsewhere)
+function addHypeTrackSelector(html, app) {
   try {
-    if (context.item && context.item.type === 'weapon') return true;
+    // Ensure html is a jQuery object (V1 passes jQuery, V2 passes DOM elements)
+    if (!(html instanceof jQuery)) {
+      html = $(html);
+    }
+    
+    // Exclude certain actor types
+    const excludeTypes = ["hazard"];
+    if (excludeTypes.includes(app.actor?.type)) return;
+    
+    const playlist = getPlaylistByKey('hypeTracks');
+    if (!playlist || !playlist.sounds || playlist.sounds.length === 0) {
+      console.warn("fvtt-combat_sounds_enhancer: No hype tracks playlist found");
+      return;
+    }
+
+    const sounds = playlist.sounds.map(s => ({ name: s.name, path: s.path }));
+    const currentHypeTrack = app.actor.prototypeToken?.getFlag?.("fvtt-combat_sounds_enhancer", "hypeTrack") || "";
+
+    // Create the form group HTML with a section header
+    let html_content = `
+      <section class="hype-track-section">
+        <h3 class="form-header">Hype Track</h3>
+        <div class="form-group">
+          <select id="hype-track-selector" name="hype-track">
+            <option value="">None</option>
+    `;
+    
+    for (const sound of sounds) {
+      const selected = currentHypeTrack === sound.path ? 'selected' : '';
+      html_content += `<option value="${sound.path}" ${selected}>${sound.name}</option>`;
+    }
+    
+    html_content += `</select></div></section>`;
+
+    // For PF2e, find the biography tab content div specifically
+    let targetTab = html.find('.sheet-body [data-tab="biography"]');
+    
+    // Fallback for other systems: try notes tab
+    if (!targetTab.length) {
+      targetTab = html.find('.sheet-body [data-tab="notes"]');
+    }
+    
+    // Last resort: try to find biography/notes tab without sheet-body prefix
+    if (!targetTab.length) {
+      targetTab = html.find('[data-tab="biography"]');
+    }
+    if (!targetTab.length) {
+      targetTab = html.find('[data-tab="notes"]');
+    }
+
+    if (targetTab && targetTab.length) {
+      // Insert at the beginning of the target tab content
+      targetTab.first().prepend(html_content);
+    } else {
+      console.warn("fvtt-combat_sounds_enhancer: Could not find biography/notes tab for actor sheet", app.actor.type);
+    }
+      
+    // Add change event listener
+    html.find("#hype-track-selector").on("change", async (event) => {
+      const selectedPath = event.target.value;
+      if (selectedPath) {
+        await app.actor.prototypeToken.setFlag("fvtt-combat_sounds_enhancer", "hypeTrack", selectedPath);
+      } else {
+        await app.actor.prototypeToken.unsetFlag("fvtt-combat_sounds_enhancer", "hypeTrack");
+      }
+    });
   } catch (e) {
-    // defensive: fall through
+    console.warn("Error adding hype track selector to actor sheet:", e);
   }
-
-  // Heuristic: if the context explicitly seems to be a damage roll, reject
-  if (context.roll && context.roll.type === 'damage') return false;
-  if (String(context.type).toLowerCase().includes('damage')) return false;
-
-  // Fallback permissive checks: originType sometimes contains 'Item' or 'Weapon'
-  if (typeof context.originType === 'string' && /item|weapon/i.test(context.originType)) return true;
-
-  // Last resort: don't assume it's an attack to avoid false positives
-  return false;
 }
 
-function isPf2eAttackMessage(message) {
-  const context = message?.flags?.pf2e?.context;
-  return isPf2eAttackContext(context);
-}
+// Support for V1 sheets (PF2e and older systems)
+Hooks.on("renderActorSheet", (app, html) => {
+  addHypeTrackSelector(html, app);
+});
 
-function isPf2eDamageContext(context) {
+// Support for V2 sheets (D&D 5e and newer systems)
+Hooks.on("renderActorSheetV2", (app, html) => {
+  addHypeTrackSelector(html, app);
+});
+
+/**
+ * Helper: detect whether a context represents damage (to avoid duplicate sounds).
+ * Works with PF2E and SF2E systems.
+ */
+function isDamageContext(context) {
   if (!context || typeof context !== 'object') return false;
-  // Common indicators of damage rolls
   if (context.roll && context.roll.type === 'damage') return true;
   if (Array.isArray(context.roll?.types) && context.roll.types.includes('damage')) return true;
   if (String(context.type).toLowerCase().includes('damage')) return true;
@@ -371,8 +316,8 @@ function isPf2eDamageContext(context) {
 }
 
 Hooks.on("combatStart", (combat, options, userId) => {
-  if (!game.user.isGM) return;
   if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCombatStarts")) return;
+  if (!game.user.isGM) return;
 
   const delay = isMonkCombatDetailsActive ? 500 : 0;
 
@@ -393,16 +338,19 @@ Hooks.on("combatStart", (combat, options, userId) => {
 
 Hooks.on("updateCombat", async (combat, updateData) => {
   if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableHypeTracks")) return;
+  if (!game.user.isGM) return;
   if (!("turn" in updateData)) return;
 
-  const actorId = combat.combatant?.actor?.id;
-  const trackMap = game.settings.get("fvtt-combat_sounds_enhancer", "actorTrackMap");
-  const stored = trackMap[actorId];
-  if (!stored) return;
+  const actor = combat.combatant?.actor;
+  if (!actor) return;
+
+  // Get the hype track from the actor's prototype token
+  const hypeTrackPath = actor.prototypeToken?.getFlag?.("fvtt-combat_sounds_enhancer", "hypeTrack") || "";
+  if (!hypeTrackPath) return;
 
   const playlist = getPlaylistByKey('hypeTracks');
-  // First try to resolve by sound.path (new format), fall back to name (legacy)
-  const sound = playlist?.sounds.find(s => s.path === stored) || playlist?.sounds.find(s => s.name === stored);
+  // Resolve by sound.path
+  const sound = playlist?.sounds.find(s => s.path === hypeTrackPath);
   if (!sound) return;
 
   await combatStartLock;
@@ -410,9 +358,9 @@ Hooks.on("updateCombat", async (combat, updateData) => {
 });
 
 Hooks.on("updateCombatant", async (combatant, updateData) => {
-  if (!game.user.isGM) return;
   if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableDeathSounds")) return;
   if (!updateData.defeated) return;
+  if (!game.user.isGM) return;
 
   const actor = combatant.actor;
   if (!actor || actor.type === "character") return;
@@ -425,10 +373,10 @@ Hooks.on("updateCombatant", async (combatant, updateData) => {
 });
 
 Hooks.on("preCreateChatMessage", async (message, options, userId) => {
-  if (!game.user.isGM) return;
   if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCriticalSounds")) return;
-  const flags = message.flags?.pf2e?.context;
-  // Minimal logging: only warn on missing flags when debugging
+  if (!game.user.isGM) return;
+  // Support both PF2E (pf2e) and SF2E (sf2e) systems
+  const flags = message.flags?.pf2e?.context || message.flags?.sf2e?.context;
   if (!flags) return;
 
   // If this message explicitly marks a critical, play the critical sound
@@ -436,7 +384,7 @@ Hooks.on("preCreateChatMessage", async (message, options, userId) => {
   const isCriticalSuccess = !!flags.isCriticalSuccess;
   const isCriticalFailure = !!flags.isCriticalFailure;
   if (!isCriticalSuccess && !isCriticalFailure) return;
-  if (isPf2eDamageContext(flags)) return;
+  if (isDamageContext(flags)) return;
 
   // Use the same logical keys as the createChatMessage handler
   const playlistKey = isCriticalSuccess ? 'criticalSuccess' : 'criticalFailure';
@@ -448,29 +396,80 @@ Hooks.on("preCreateChatMessage", async (message, options, userId) => {
 });
 
 Hooks.on("createChatMessage", async (message) => {
-  if (!game.user.isGM) return;
   if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCriticalSounds")) return;
-  const context = message.flags?.pf2e?.context;
+  if (!game.user.isGM) return;
+  // Support both PF2E (pf2e) and SF2E (sf2e) systems
+  const context = message.flags?.pf2e?.context || message.flags?.sf2e?.context;
   const outcome = context?.outcome;
   const unadjustedOutcome = context?.unadjustedOutcome;
 
-  
-
-  // Play on critical outcomes (accept skill checks and non-attack messages).
-  // Skip explicit damage rolls to avoid duplicate sounds on damage messages.
   const criticalOutcome = outcome || unadjustedOutcome;
   if (!criticalOutcome) return;
   if (!["criticalSuccess", "criticalFailure"].includes(criticalOutcome)) return;
-  if (isPf2eDamageContext(context)) return;
+  if (isDamageContext(context)) return;
 
-  // Use the centralized mapping for critical success/failure
   const playlistKey = criticalOutcome === 'criticalSuccess' ? 'criticalSuccess' : 'criticalFailure';
-  const p = getPlaylistByKey(playlistKey);
-  const s = getRandomValidSoundFromPlaylist(p);
-  if (!s || !p) {
-    console.warn(`No valid sound found for '${criticalOutcome}'`);
-    return;
+  const playlist = getPlaylistByKey(playlistKey);
+  const sound = getRandomValidSoundFromPlaylist(playlist);
+  if (!sound || !playlist) return;
+
+  await playlist.playSound(sound);
+});
+
+// Track previous hero points state for hero point usage detection
+const previousHeroPointCounts = new WeakMap();
+
+Hooks.on("updateActor", async (actor, updateData, options, userId) => {
+  if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableHeroPointSounds")) return;
+  if (!game.user.isGM) return;
+  // Hero points are PF2E-only
+  if (game.system.id !== "pf2e") return;
+
+  // Hero points are in actor.system.resources.heroPoints as {value: X, max: Y}
+  const heroPointData = actor.system?.resources?.heroPoints;
+  const currentHeroPoints = heroPointData?.value ?? 0;
+  const previousHeroPoints = previousHeroPointCounts.get(actor) ?? currentHeroPoints;
+
+  // Check if hero points were used (decreased)
+  if (currentHeroPoints < previousHeroPoints) {
+    const playlist = getPlaylistByKey('heroPoints');
+    const sound = getRandomValidSoundFromPlaylist(playlist);
+    if (sound && playlist) {
+      await playlist.playSound(sound);
+    } else {
+      console.warn("fvtt-combat_sounds_enhancer: No valid sound found for hero points");
+    }
   }
 
-  await p.playSound(s);
+  // Update the tracked hero point count for this actor
+  previousHeroPointCounts.set(actor, currentHeroPoints);
+});
+
+Hooks.on("deleteCombat", async (combat, options, userId) => {
+  if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCombatEndDialog")) return;
+
+  const dialogText = game.settings.get("fvtt-combat_sounds_enhancer", "combatEndDialogText");
+  
+  // Play the combat end sound (GM only)
+  if (game.user.isGM) {
+    const playlist = getPlaylistByKey('combatEnd');
+    const sound = getRandomValidSoundFromPlaylist(playlist);
+    if (sound && playlist) {
+      await playlist.playSound(sound);
+    }
+  }
+
+  // Show the dialog for all users
+  new Dialog({
+    title: "Combat Ended",
+    content: `<p>${dialogText}</p>`,
+    buttons: {
+      close: {
+        icon: '<i class="fas fa-check"></i>',
+        label: "Close",
+        callback: () => {}
+      }
+    },
+    default: "close"
+  }).render(true);
 });
