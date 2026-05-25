@@ -304,9 +304,10 @@ Hooks.on("renderActorSheetV2", (app, html) => {
 });
 
 /**
- * Helper: detect whether a PF2e context represents damage (to avoid duplicate sounds).
+ * Helper: detect whether a context represents damage (to avoid duplicate sounds).
+ * Works with PF2E and SF2E systems.
  */
-function isPf2eDamageContext(context) {
+function isDamageContext(context) {
   if (!context || typeof context !== 'object') return false;
   if (context.roll && context.roll.type === 'damage') return true;
   if (Array.isArray(context.roll?.types) && context.roll.types.includes('damage')) return true;
@@ -374,7 +375,8 @@ Hooks.on("updateCombatant", async (combatant, updateData) => {
 Hooks.on("preCreateChatMessage", async (message, options, userId) => {
   if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCriticalSounds")) return;
   if (!game.user.isGM) return;
-  const flags = message.flags?.pf2e?.context;
+  // Support both PF2E (pf2e) and SF2E (sf2e) systems
+  const flags = message.flags?.pf2e?.context || message.flags?.sf2e?.context;
   if (!flags) return;
 
   // If this message explicitly marks a critical, play the critical sound
@@ -382,7 +384,7 @@ Hooks.on("preCreateChatMessage", async (message, options, userId) => {
   const isCriticalSuccess = !!flags.isCriticalSuccess;
   const isCriticalFailure = !!flags.isCriticalFailure;
   if (!isCriticalSuccess && !isCriticalFailure) return;
-  if (isPf2eDamageContext(flags)) return;
+  if (isDamageContext(flags)) return;
 
   // Use the same logical keys as the createChatMessage handler
   const playlistKey = isCriticalSuccess ? 'criticalSuccess' : 'criticalFailure';
@@ -396,14 +398,15 @@ Hooks.on("preCreateChatMessage", async (message, options, userId) => {
 Hooks.on("createChatMessage", async (message) => {
   if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableCriticalSounds")) return;
   if (!game.user.isGM) return;
-  const context = message.flags?.pf2e?.context;
+  // Support both PF2E (pf2e) and SF2E (sf2e) systems
+  const context = message.flags?.pf2e?.context || message.flags?.sf2e?.context;
   const outcome = context?.outcome;
   const unadjustedOutcome = context?.unadjustedOutcome;
 
   const criticalOutcome = outcome || unadjustedOutcome;
   if (!criticalOutcome) return;
   if (!["criticalSuccess", "criticalFailure"].includes(criticalOutcome)) return;
-  if (isPf2eDamageContext(context)) return;
+  if (isDamageContext(context)) return;
 
   const playlistKey = criticalOutcome === 'criticalSuccess' ? 'criticalSuccess' : 'criticalFailure';
   const playlist = getPlaylistByKey(playlistKey);
@@ -419,6 +422,8 @@ const previousHeroPointCounts = new WeakMap();
 Hooks.on("updateActor", async (actor, updateData, options, userId) => {
   if (!game.settings.get("fvtt-combat_sounds_enhancer", "enableHeroPointSounds")) return;
   if (!game.user.isGM) return;
+  // Hero points are PF2E-only
+  if (game.system.id !== "pf2e") return;
 
   // Hero points are in actor.system.resources.heroPoints as {value: X, max: Y}
   const heroPointData = actor.system?.resources?.heroPoints;
