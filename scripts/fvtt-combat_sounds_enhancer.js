@@ -239,13 +239,18 @@ function addHypeTrackSelector(html, app) {
 
     const sounds = playlist.sounds.map(s => ({ name: s.name, path: s.path }));
     const currentHypeTrack = app.actor.prototypeToken?.getFlag?.("fvtt-combat_sounds_enhancer", "hypeTrack") || "";
+    const selectorId = "hype-track-selector";
+
+    if (html.find(`#${selectorId}`).length) {
+      return;
+    }
 
     // Create the form group HTML with a section header
     let html_content = `
       <section class="hype-track-section">
         <h3 class="form-header">Hype Track</h3>
         <div class="form-group">
-          <select id="hype-track-selector" name="hype-track">
+          <select id="${selectorId}" name="hype-track">
             <option value="">None</option>
     `;
     
@@ -279,8 +284,8 @@ function addHypeTrackSelector(html, app) {
       console.warn("fvtt-combat_sounds_enhancer: Could not find biography/notes tab for actor sheet", app.actor.type);
     }
       
-    // Add change event listener
-    html.find("#hype-track-selector").on("change", async (event) => {
+    // Add change event listener once per sheet root
+    html.off("change", `#${selectorId}`).on("change", `#${selectorId}`, async (event) => {
       const selectedPath = event.target.value;
       if (selectedPath) {
         await app.actor.prototypeToken.setFlag("fvtt-combat_sounds_enhancer", "hypeTrack", selectedPath);
