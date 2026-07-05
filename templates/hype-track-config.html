@@ -2,9 +2,6 @@
   <fieldset>
     <legend>Hype Track Assignments</legend>
     <p>Assign a hype track sound to each player character. When a player character’s turn starts, the matching sound will play.</p>
-    <p style="font-size: 0.85em; opacity: 0.8; margin-top: 0.25em;">
-      Debug: playlist={{debug.playlistName}}, rawSounds={{debug.rawSoundCount}}, options={{debug.optionCount}}, playerCharacters={{debug.pcCount}}
-    </p>
     {{#if hasSounds}}
       {{#each playerCharacters as |actor|}}
         <div class="form-group">

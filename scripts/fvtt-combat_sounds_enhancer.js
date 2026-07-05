@@ -259,8 +259,6 @@ class PlaylistNameMapForm extends FormAppBase {
   async _updateObject(event, formData) {
     const newMap = buildPlaylistNameMapFromSubmission(formData, event);
     await game.settings.set("fvtt-combat_sounds_enhancer", "playlistNameMap", newMap);
-    const persisted = game.settings.get("fvtt-combat_sounds_enhancer", "playlistNameMap") || {};
-    console.log("fvtt-combat_sounds_enhancer: Saved playlistNameMap", persisted);
     ui.notifications?.info("Combat Sounds Enhancer: Playlist mapping saved.");
   }
 }
@@ -279,10 +277,6 @@ class HypeTrackConfigForm extends FormAppBase {
   getData(options) {
     const assignments = game.settings.get("fvtt-combat_sounds_enhancer", "pcHypeTracks") || {};
     const hypePlaylist = getPlaylistByKey("hypeTracks");
-    if (!hypePlaylist) {
-      const rawMap = game.settings.get("fvtt-combat_sounds_enhancer", "playlistNameMap") || {};
-      console.warn("fvtt-combat_sounds_enhancer: Hype Track Assignments could not resolve the hypeTracks playlist", { playlistNameMap: rawMap });
-    }
     const rawSounds = getPlaylistSounds(hypePlaylist);
     const sounds = rawSounds
       .map(s => {
@@ -295,22 +289,13 @@ class HypeTrackConfigForm extends FormAppBase {
         };
       })
       .filter(s => s.value.length > 0);
-    if (hypePlaylist && sounds.length === 0) {
-      console.warn(`fvtt-combat_sounds_enhancer: Hype playlist \"${hypePlaylist.name}\" resolved but no playable sounds were detected`);
-    }
     const playerCharacters = game.actors.filter(a => a.type === "character" && a.hasPlayerOwner).sort((a, b) => a.name.localeCompare(b.name));
     
     return {
       assignments,
       sounds,
       playerCharacters,
-      hasSounds: sounds.length > 0,
-      debug: {
-        playlistName: hypePlaylist?.name || "(unresolved)",
-        rawSoundCount: rawSounds.length,
-        optionCount: sounds.length,
-        pcCount: playerCharacters.length
-      }
+      hasSounds: sounds.length > 0
     };
   }
 
@@ -329,7 +314,6 @@ Hooks.once("ready", () => {
   isMonkCombatDetailsActive = game.modules.get("monks-combat-details")?.active;
 });
 Hooks.once("init", async () => {
-  console.log("fvtt-combat_sounds_enhancer: init hook starting");
   // Use the namespaced loadTemplates when available (newer Foundry); fall back
   // to the global `loadTemplates` for V13 compatibility.
   try {
@@ -340,25 +324,6 @@ Hooks.once("init", async () => {
     ]);
   } catch (error) {
     console.warn("fvtt-combat_sounds_enhancer: Failed to load templates", error);
-  }
-
-  console.log("fvtt-combat_sounds_enhancer: templates loaded");
-
-
-  // Register custom data field for hype track on token prototypes
-  if (foundry?.data?.fields) {
-    const fields = foundry.data.fields;
-    
-    // Extend Actor schema to add hypeTrack field
-    Hooks.on("modelDataFieldRegister", (fields) => {
-      if (CONFIG.Actor.dataFields) {
-        CONFIG.Actor.dataFields.prototype.hypeTrack = new fields.StringField({ 
-          initial: "",
-          label: "Hype Track",
-          hint: "Path to hype track sound for this actor"
-        });
-      }
-    });
   }
 
   game.settings.register("fvtt-combat_sounds_enhancer", "enableHypeTracks", {
