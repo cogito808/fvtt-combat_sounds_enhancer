@@ -7,7 +7,7 @@
         <select name="{{k}}" id="{{k}}">
           <option value="">Use default ({{lookup ../defaults k}})</option>
           {{#each ../playlists as |p|}}
-            <option value="{{p}}" {{#ifEquals p (lookup ../current k)}}selected{{/ifEquals}}>{{p}}</option>
+            <option value="{{p.id}}" {{#ifEquals p.id (lookup ../../currentIds k)}}selected{{/ifEquals}}>{{p.name}}</option>
           {{/each}}
         </select>
       </div>
