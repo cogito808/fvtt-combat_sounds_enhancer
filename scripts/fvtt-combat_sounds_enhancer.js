@@ -68,7 +68,8 @@ Hooks.once("init", async () => {
   // to the global `loadTemplates` for V13 compatibility.
   const loadTemplatesFn = foundry?.applications?.handlebars?.loadTemplates ?? loadTemplates;
   await loadTemplatesFn([
-    "modules/fvtt-combat_sounds_enhancer/templates/playlist-name-config.html"
+  "modules/fvtt-combat_sounds_enhancer/templates/playlist-name-config.html",
+  "modules/fvtt-combat_sounds_enhancer/templates/hype-track-config.html"
   ]);
 
   // Register custom data field for hype track on token prototypes
@@ -176,7 +177,17 @@ Hooks.once("init", async () => {
     restricted: true,
     order: 100
   });
-});
+   
+// Register a new settings menu item for hype track assignments
+  game.settings.registerMenu("fvtt-combat_sounds_enhancer", "hypeTrackConfig", {
+    name: "Hype Track Assignments",
+    label: "Assign Hype Tracks to Player Characters",
+    hint: "Select a hype track sound for each player character.",
+    icon: "fas fa-volume-up",
+    type: HypeTrackConfigForm,
+    restricted: true,
+    order: 200
+  });    
 
 class PlaylistNameMapForm extends FormAppBase {
   static get defaultOptions() {
@@ -213,99 +224,6 @@ class PlaylistNameMapForm extends FormAppBase {
 
 Handlebars.registerHelper("ifEquals", function(a, b, options) {
   return a === b ? options.fn(this) : options.inverse(this);
-});
-
-/**
- * Hook to extend actor sheets with a hype track selector.
- * Adds the hype track field to the biography/notes tab for all actor types.
- * Supports both V1 and V2 form applications.
- */
-function addHypeTrackSelector(html, app) {
-  try {
-    // Ensure html is a jQuery object (V1 passes jQuery, V2 passes DOM elements)
-    if (!(html instanceof jQuery)) {
-      html = $(html);
-    }
-    
-    // Exclude certain actor types
-    const excludeTypes = ["hazard"];
-    if (excludeTypes.includes(app.actor?.type)) return;
-    
-    const playlist = getPlaylistByKey('hypeTracks');
-    if (!playlist || !playlist.sounds || playlist.sounds.length === 0) {
-      console.warn("fvtt-combat_sounds_enhancer: No hype tracks playlist found");
-      return;
-    }
-
-    const sounds = playlist.sounds.map(s => ({ name: s.name, path: s.path }));
-    const currentHypeTrack = app.actor.prototypeToken?.getFlag?.("fvtt-combat_sounds_enhancer", "hypeTrack") || "";
-    const selectorId = "hype-track-selector";
-
-    if (html.find(`#${selectorId}`).length) {
-      return;
-    }
-
-    // Create the form group HTML with a section header
-    let html_content = `
-      <section class="hype-track-section">
-        <h3 class="form-header">Hype Track</h3>
-        <div class="form-group">
-          <select id="${selectorId}" name="hype-track">
-            <option value="">None</option>
-    `;
-    
-    for (const sound of sounds) {
-      const selected = currentHypeTrack === sound.path ? 'selected' : '';
-      html_content += `<option value="${sound.path}" ${selected}>${sound.name}</option>`;
-    }
-    
-    html_content += `</select></div></section>`;
-
-    // For PF2e, find the biography tab content div specifically
-    let targetTab = html.find('.sheet-body [data-tab="biography"]');
-    
-    // Fallback for other systems: try notes tab
-    if (!targetTab.length) {
-      targetTab = html.find('.sheet-body [data-tab="notes"]');
-    }
-    
-    // Last resort: try to find biography/notes tab without sheet-body prefix
-    if (!targetTab.length) {
-      targetTab = html.find('[data-tab="biography"]');
-    }
-    if (!targetTab.length) {
-      targetTab = html.find('[data-tab="notes"]');
-    }
-
-    if (targetTab && targetTab.length) {
-      // Insert at the beginning of the target tab content
-      targetTab.first().prepend(html_content);
-    } else {
-      console.warn("fvtt-combat_sounds_enhancer: Could not find biography/notes tab for actor sheet", app.actor.type);
-    }
-      
-    // Add change event listener once per sheet root
-    html.off("change", `#${selectorId}`).on("change", `#${selectorId}`, async (event) => {
-      const selectedPath = event.target.value;
-      if (selectedPath) {
-        await app.actor.prototypeToken.setFlag("fvtt-combat_sounds_enhancer", "hypeTrack", selectedPath);
-      } else {
-        await app.actor.prototypeToken.unsetFlag("fvtt-combat_sounds_enhancer", "hypeTrack");
-      }
-    });
-  } catch (e) {
-    console.warn("Error adding hype track selector to actor sheet:", e);
-  }
-}
-
-// Support for V1 sheets (PF2e and older systems)
-Hooks.on("renderActorSheet", (app, html) => {
-  addHypeTrackSelector(html, app);
-});
-
-// Support for V2 sheets (D&D 5e and newer systems)
-Hooks.on("renderActorSheetV2", (app, html) => {
-  addHypeTrackSelector(html, app);
 });
 
 /**
@@ -347,14 +265,13 @@ Hooks.on("updateCombat", async (combat, updateData) => {
   if (!("turn" in updateData)) return;
 
   const actor = combat.combatant?.actor;
-  if (!actor) return;
+  if (!actor || actor.type !== "character") return;
 
-  // Get the hype track from the actor's prototype token
-  const hypeTrackPath = actor.prototypeToken?.getFlag?.("fvtt-combat_sounds_enhancer", "hypeTrack") || "";
+  const assignments = game.settings.get("fvtt-combat_sounds_enhancer", "pcHypeTracks") || {};
+  const hypeTrackPath = assignments[actor.id];
   if (!hypeTrackPath) return;
 
-  const playlist = getPlaylistByKey('hypeTracks');
-  // Resolve by sound.path
+  const playlist = getPlaylistByKey("hypeTracks");
   const sound = playlist?.sounds.find(s => s.path === hypeTrackPath);
   if (!sound) return;
 
